@@ -444,6 +444,9 @@ tr.removed td{opacity:.35}
     <button class="exp-tab" id="tab-sharp" onclick="setExpTab('sharp')">📨 Skarp order</button>
   </div>
 
+  <div id="export-filter-info" class="alert alert-info" style="margin-bottom:1rem">
+    ℹ️ <span id="export-filter-text">Exporten innehåller de rader som visas i granskningsvyn med ditt aktiva filter.</span>
+  </div>
   <div id="panel-test">
     <div class="alert alert-info" style="margin-bottom:1rem">ℹ️ Testexport — ingen PO-information behövs. Importera i Kodmyran, granska live och makulera manuellt om du behöver justera. Exportera skarp order när du är nöjd.</div>
     <button class="btn btn-warn" onclick="doExport('test')" style="margin-bottom:1.25rem">⬇️ Exportera testfil (CSV)</button>
@@ -1021,7 +1024,7 @@ function removeReviewRow(i){if(removedRows.has(i))removedRows.delete(i);else rem
 
 // ── Confirm ──────────────────────────────────────────────────────
 function renderConfirm(){
-  const act=proposals.filter((_,i)=>!removedRows.has(i));
+  const act=getFilteredRows();
   const bat=act.filter(p=>p.otype.includes('bat')),air=act.filter(p=>p.otype.includes('air')),fly=act.filter(p=>p.otype==='fly');
   document.getElementById('confirm-summary').innerHTML=`
     <div class="sum-card" style="border-color:#9FE1CB"><div style="font-size:11px;color:#0F6E56;text-transform:uppercase;font-weight:600">Båt-order</div><div style="font-size:28px;font-weight:500;color:#0F6E56;margin:8px 0 4px">${bat.reduce((s,p)=>s+p.uBat,0)}</div><div style="font-size:11px;color:#888">${bat.length} produkter</div></div>
@@ -1070,8 +1073,31 @@ function buildPreview(type){
   return h;
 }
 
+function getFilteredRows(){
+  const fBat=document.getElementById('f-bat').checked,fAir=document.getElementById('f-air').checked,fFly=document.getElementById('f-fly').checked;
+  const ffGen=document.getElementById('ff-gen').checked,ff3c=document.getElementById('ff-3c').checked,ffOth=document.getElementById('ff-oth').checked;
+  const fWarn=document.getElementById('f-warn-only').checked,fCrit=document.getElementById('f-crit-only').checked;
+  const fkA=document.getElementById('fk-A').checked,fkB=document.getElementById('fk-B').checked;
+  const fkCp=document.getElementById('fk-Cp').checked,fkC=document.getElementById('fk-C').checked;
+  const sr=document.getElementById('f-search').value.toLowerCase();
+  return proposals.filter((p,i)=>{
+    if(removedRows.has(i))return false;
+    const t=p.otype;
+    const typeOk=(fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly');
+    if(!typeOk)return false;
+    const famOk=(ffGen&&p.family==='genuine')||(ff3c&&p.family==='3card')||(ffOth&&p.family==='other');
+    if(!famOk)return false;
+    const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&p.klass==='C');
+    if(!klassOk)return false;
+    if(fWarn&&(!p.warns||p.warns.length===0))return false;
+    if(fCrit&&p.daysLeft>=p.daysToContainer)return false;
+    if(sr&&!p.artNr.toString().includes(sr)&&!p.produkt.toLowerCase().includes(sr))return false;
+    return true;
+  });
+}
+
 function doExport(type){
-  const act=proposals.filter((_,i)=>!removedRows.has(i));
+  const act=getFilteredRows();
   if(act.length===0){alert('Inga rader att exportera. Gå tillbaka och beräkna ett orderförslag.');return;}
   const po=type==='test'?'TEST-'+todayStr:(gv('exp-po')||'');
   const eta=type==='test'?'':gv('exp-eta');
@@ -1109,7 +1135,19 @@ function showGlobalStatus(msg,cls){
 // ── Navigation ───────────────────────────────────────────────────
 function goTo(n){
   if(n===4)renderConfirm();
-  if(n===5){setExpTab('test');document.getElementById('preview-test').innerHTML='';document.getElementById('preview-sharp').innerHTML='';}
+  if(n===5){
+    setExpTab('test');
+    document.getElementById('preview-test').innerHTML='';
+    document.getElementById('preview-sharp').innerHTML='';
+    const filtered=getFilteredRows();
+    const famNames=[];
+    try{if(document.getElementById('ff-gen').checked)famNames.push('Genuine Leather');}catch(e){}
+    try{if(document.getElementById('ff-3c').checked)famNames.push('3 Card PU');}catch(e){}
+    try{if(document.getElementById('ff-oth').checked)famNames.push('Övriga');}catch(e){}
+    const famStr=famNames.length>0?famNames.join(' + '):'alla familjer';
+    const infoEl=document.getElementById('export-filter-text');
+    if(infoEl)infoEl.textContent=`Exporten innehåller ${filtered.length} rader (${famStr}) — samma som visas i granskningsvyn med ditt aktiva filter.`;
+  }
   for(let i=0;i<6;i++){
     document.getElementById('v'+i).style.display=i===n?'':'none';
     document.getElementById('st'+i).className='step'+(i===n?' active':i<n?' done':'');
