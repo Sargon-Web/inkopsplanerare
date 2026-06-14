@@ -613,12 +613,20 @@ function parseProducts(rows){
         i1m=H.findIndex(h=>h==='1m'),i3m=H.findIndex(h=>h==='3m'),
         i1a=H.findIndex(h=>h==='1å'||h==='1a'||h.includes('\u00e5')||h==='1ã¥'),
         iE=H.findIndex(h=>h.includes('enhet'));
-  const out=[];let cPOs=[];
+  const out=[];
   for(let i=hdr+1;i<rows.length;i++){
     const r=rows[i];if(!r||r.every(c=>c===''||c===null||c===undefined))continue;
     const aRaw=String(r[iA]||'').trim(),pRaw=String(r[iP]||'').trim();
-    if(!aRaw&&pRaw.toLowerCase().includes('inköpsorder')){const m=pRaw.match(/#(\w+).*?(\d+)\s*antal/i);if(m)cPOs.push({po:m[1],qty:parseInt(m[2])});continue;}
-    if(!aRaw||isNaN(parseInt(aRaw))){cPOs=[];continue;}
+    // PO row comes AFTER product row — collect and attach to last product
+    if(!aRaw&&pRaw.toLowerCase().includes('inköpsorder')){
+      const m=pRaw.match(/#(\w+)[\s\S]*?(\d+)\s*antal/i);
+      if(m&&out.length>0){
+        // Attach to the LAST product added
+        out[out.length-1].filePOs.push({po:m[1],qty:parseInt(m[2])});
+      }
+      continue;
+    }
+    if(!aRaw||isNaN(parseInt(aRaw))){continue;}
     const til=parseFloat(r[iT])||0,ila=parseFloat(r[iI])||0,gra=parseFloat(r[iG])||0;
     const m1=parseFloat(r[i1m])||0,m3=parseFloat(r[i3m])||0,y1=parseFloat(r[i1a])||0,enhet=parseFloat(r[iE])||0;
     const lev=String(r[iL]||'').trim(),ll=lev.toLowerCase(),pl=pRaw.toLowerCase();
@@ -637,8 +645,7 @@ function parseProducts(rows){
               pl.includes('crazy horse')||pl.includes('3 card'))
         fam='3card';
     }
-    out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[...cPOs]});
-    cPOs=[];
+    out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[]});
   }
   return out;
 }
