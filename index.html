@@ -400,9 +400,8 @@ tr.removed td{opacity:.35}
           <th style="width:28px" onclick="sortBy('m3')">3m</th>
           <th style="width:30px" onclick="sortBy('y1')">1år</th>
           <th style="width:58px" onclick="sortBy('trend')">Trend</th>
-          <th style="width:55px" onclick="sortBy('klass')">Klass <span id="sort-klass"></span></th>
-          <th style="width:80px" onclick="sortBy('daysLeft')">Dagar (lager) <span id="sort-daysLeft">↑</span></th>
-          <th style="width:80px" onclick="sortBy('daysLeftTotal')">Dagar (totalt) <span id="sort-daysLeftTotal"></span></th>
+          <th style="width:50px" onclick="sortBy('klass')">Klass <span id="sort-klass"></span></th>
+          <th style="width:90px" onclick="sortBy('daysLeft')" title="Dagar tills lagret tar slut — inkl. ila och inkommande PO">Dagar kvar <span id="sort-daysLeft">↑</span></th>
           <th style="width:75px">Typ</th>
           <th style="width:50px" onclick="sortBy('suggestQty')">Förslag</th>
           <th style="width:85px">Din order</th>
@@ -724,49 +723,94 @@ function normPOMatch(a,b){
   return clean(a)===clean(b);
 }
 
-// Get PO quantity that is sellable before a given number of days from now
-function getPOQty(filePOs,deadlineDays){
-  const dl=new Date(Date.now()+deadlineDays*864e5);
-  let tot=0;
+// Get all PO deliveries as [{day, qty}] sorted by day
+function getPODeliveries(filePOs){
+  const today=new Date();
+  const deliveries=[];
   filePOs.forEach(fp=>{
     const po=poList.find(pl=>normPOMatch(pl.po,fp.po));
-    if(po&&po.sellable&&isValidDate(po.sellable)&&new Date(po.sellable)<=dl)tot+=fp.qty;
+    if(po&&po.sellable&&isValidDate(po.sellable)){
+      const sellDate=new Date(po.sellable);
+      const day=Math.max(0,Math.round((sellDate-today)/864e5));
+      deliveries.push({day,qty:fp.qty,po:fp.po});
+    }
   });
-  return tot;
+  return deliveries.sort((a,b)=>a.day-b.day);
 }
 
 function hasActivePO(filePOs){
   return filePOs.some(fp=>poList.some(pl=>normPOMatch(pl.po,fp.po)&&pl.sellable));
 }
 
-// Classify product A/B/C+/C/D based on annual sales
+// Simulate stock day by day — returns detailed timeline
+// Returns: { stockoutDay, airGap, stockAtContainer, poDeliveries }
+function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay){
+  let stock = startStock + ilaQty; // ila counts as available now (already in transit, arrives soon)
+  let airGap = 0;
+  let stockAtContainer = 0;
+  let firstStockout = -1;
+
+  // Add ila as immediate delivery on day 0 if not already in deliveries
+  // (ila is already added to startStock above)
+
+  for(let day=0; day<=containerDay+1; day++){
+    // Check if any PO delivers today
+    deliveries.forEach(d=>{
+      if(d.day===day) stock+=d.qty;
+    });
+
+    // Sell today's demand
+    const sold=dailySales;
+    if(stock>0){
+      stock=Math.max(0,stock-sold);
+    } else {
+      // Stock is zero — accumulate air gap
+      if(day<containerDay){
+        airGap+=sold;
+        if(firstStockout<0) firstStockout=day;
+      }
+    }
+
+    if(day===containerDay){
+      stockAtContainer=Math.max(0,stock);
+    }
+  }
+
+  return {
+    stockoutDay: firstStockout,
+    airGap: Math.ceil(airGap),
+    stockAtContainer: Math.max(0,stockAtContainer),
+    firstStockout
+  };
+}
+
+// Classify product A/B/C+/C/D
 function classify(p){
-  const y=p.y1, m3=p.m3, m1=p.m1;
-  if(y>=30)return 'A';
-  if(y>=15)return 'B';
-  if(y>=6)return 'Cp'; // C+
-  if(y>=2)return 'C';
-  // Also check recent months for new products
-  if(m3>=8||m1>=3)return 'B'; // trending new product
-  if(m3>=3||m1>=1)return 'Cp';
+  const y=p.y1, m3avg=p.m3/3, m1=p.m1;
+  if(y>=30) return 'A';
+  if(y>=15) return 'B';
+  if(y>=6)  return 'Cp';
+  if(y>=2)  return 'C';
+  // New/emerging product — check recent months
+  if(m1>=5||m3avg>=3) return 'B';
+  if(m1>=2||m3avg>=1.5) return 'Cp';
   return 'D';
 }
 
 // Cover months per class and trend
 function getCoverMonths(klass,trend){
-  if(klass==='A') return trend==='up'?7:trend==='down'?6:7; // A always gets generous cover
-  if(klass==='B') return 6;
+  if(klass==='A')  return trend==='up'?7:trend==='down'?6:7;
+  if(klass==='B')  return 6;
   if(klass==='Cp') return trend==='down'?3:4;
-  if(klass==='C') return 0; // no bat, safety-net flyg only
-  return 0; // D — nothing
+  return 0;
 }
 
-// Weighted daily demand — uses trend to pick right base
+// Weighted daily demand
 function getDemand(p,trend){
   const a3=p.m3/3, a12=p.y1/12;
   const w=0.5*p.m1+0.3*a3+0.2*a12;
-  if(trend==='up')return Math.max(w,p.m1,a3);
-  if(trend==='down')return Math.min(w,a3);
+  if(trend==='up')  return Math.max(w,p.m1,a3);
+  if(trend==='down') return Math.min(w,a3);
   return w;
 }
 
@@ -775,16 +819,21 @@ function getTrend(p,cfg){
   return q>=cfg.tup?'up':q<cfg.tdn?'down':'stable';
 }
 
-// Dagar till slut = bara lagret (utan PO) — visar verklig risk
-function calcDaysLeftStock(p,daily){
+// Days left = stock only (no PO) — shows real risk
+function calcDaysLeftStock(lager,daily){
   if(daily<=0)return 999;
-  return Math.round(p.lager/daily);
+  return Math.round(lager/daily);
 }
 
-// Dagar till slut inkl PO och ila — för sekundär info
+// Days left including ila + nearby PO
 function calcDaysLeftTotal(p,daily,airLead){
   if(daily<=0)return 999;
-  const poNear=getPOQty(p.filePOs,airLead);
+  const today=new Date();
+  const deadline=new Date(today.getTime()+airLead*864e5);
+  let poNear=0;
+  getPODeliveries(p.filePOs).forEach(d=>{
+    if(d.day<=airLead) poNear+=d.qty;
+  });
   return Math.round((p.lager+p.ila+poNear)/daily);
 }
 
@@ -798,18 +847,14 @@ function rnd5(n){
 function getWarnings(p){
   const w=[];
   const avg=p.demandMonthly;
-  // Stockout before container arrives
-  if(p.daysLeft<p.daysToContainer&&p.uAir===0&&p.otype!=='air')
-    w.push(`Lagret tar slut om ${p.daysLeft} dagar — container anländer om ${p.daysToContainer} dagar. Flyg-brygga kan behövas.`);
-  // Large order on declining product
+  if(p.sim&&p.sim.firstStockout>=0&&p.uAir===0&&!p.otype.includes('air'))
+    w.push(`Lagret tar slut dag ${p.sim.firstStockout} — flyg-brygga saknas. Kontrollera manuellt.`);
   if(p.trend==='down'&&p.uBat>avg*5)
     w.push(`Stor båtorder (${p.uBat} st) på nedåtgående produkt — säljer ca ${Math.round(avg)}/mån.`);
-  // Much already on the way
-  if(p.poBat>p.y1*0.5&&p.poBat>30)
-    w.push(`${p.poBat} st redan på väg i PO — mer än 50% av årsförsäljningen.`);
-  // C+ large order warning
+  if(p.poBatTotal>p.y1*0.6&&p.poBatTotal>30)
+    w.push(`${p.poBatTotal} st redan på väg — mer än 60% av årsförsäljningen.`);
   if(p.klass==='Cp'&&p.uBat>avg*6)
-    w.push(`C+-produkt med stor order — granska om båtorder är motiverad.`);
+    w.push(`C+-produkt med stor order (${p.uBat} st) — granska om det är motiverat.`);
   return w;
 }
 
@@ -823,7 +868,7 @@ function runCalc(){
   };
   const today=new Date();
   const contMs=cfg.contDate?new Date(cfg.contDate):new Date(today.getTime()+134*864e5);
-  const daysToContainer=Math.max(0,Math.round((contMs-today)/864e5));
+  const daysToContainer=Math.max(1,Math.round((contMs-today)/864e5));
 
   proposals=[];removedRows=new Set();
 
@@ -833,81 +878,79 @@ function runCalc(){
     const trend=getTrend(p,cfg);
     const demandMonthly=getDemand(p,trend);
     const daily=demandMonthly/30;
-
     const klass=classify(p);
     const coverMonths=getCoverMonths(klass,trend);
 
-    // PO quantities credited correctly
-    const poBeforeAir=getPOQty(p.filePOs,cfg.airLead);    // PO säljbar inom flyg-ledtid
-    const poBeforeCont=getPOQty(p.filePOs,daysToContainer); // PO säljbar innan container
+    // Skip D completely
+    if(klass==='D')continue;
 
-    const daysLeft=calcDaysLeftStock(p,daily);             // bara lagret
-    const daysLeftTotal=calcDaysLeftTotal(p,daily,cfg.airLead); // inkl PO+ila
+    // Get PO deliveries timeline
+    const deliveries=getPODeliveries(p.filePOs);
+    const poBatTotal=deliveries.reduce((s,d)=>s+d.qty,0);
+
+    // Simulate stock through to container day
+    const sim=simulateStock(p.lager, p.ila, deliveries, daily, daysToContainer);
+
+    // Days left (stock only, without PO)
+    const daysLeft=calcDaysLeftStock(p.lager,daily);
+    const daysLeftTotal=calcDaysLeftTotal(p,daily,cfg.airLead);
     const inPO=hasActivePO(p.filePOs);
 
     let batQ=0,airQ=0,otype='none';
 
-    // ── D: skip ──────────────────────────────────────────────
-    if(klass==='D')continue;
-
-    // ── C: safety-net flyg only ───────────────────────────────
+    // ── C: safety-net only ────────────────────────────────────
     if(klass==='C'){
-      // Only if stock is zero or near zero and nothing on the way
-      if(p.lager+p.ila+poBeforeAir<=2&&daily>0){
-        airQ=5; // safety-net
+      if(p.lager+p.ila+poBatTotal<=2&&daily>0){
+        airQ=5;
         otype='air';
       } else continue;
     } else {
-      // ── A, B, C+: calculate bat + air bridge ─────────────────
-
-      // BAT ORDER
-      // Target stock = what we want available when container arrives
-      // = coverMonths × monthly demand
-      // Projected stock at container arrival = lager + ila + PO before container - sold during lead time
-      if(coverMonths>0){
-        const soldDuringLead=daily*daysToContainer;
-        const projectedAtArrival=Math.max(0,p.lager+p.ila+poBeforeCont-soldDuringLead);
-        const targetStock=Math.ceil(demandMonthly*coverMonths);
-        const batNeed=targetStock-projectedAtArrival;
-        if(batNeed>4)batQ=rnd5(batNeed);
-      }
+      // ── A, B, C+: full calculation ───────────────────────────
 
       // AIR BRIDGE
-      // Only if stock runs out before container arrives (or before PO arrives)
-      // Gap = what is missing to survive until container is sellable
-      const stockoutDay=daily>0?p.lager/daily:9999;
-      if(stockoutDay<daysToContainer){
-        // Stock will run out before container — check if PO covers it
-        const availableUntilCont=p.lager+p.ila+poBeforeAir;
-        const neededUntilCont=Math.ceil(daily*daysToContainer);
-        const gap=neededUntilCont-availableUntilCont;
-        if(gap>2){
-          // C+ gets flagged for review, not auto-ordered
-          if(klass==='Cp'){
-            airQ=rnd5(gap);
-            otype=batQ>0?'bat+air':'air';
-            // Mark as review
-          } else {
-            airQ=rnd5(gap);
-          }
+      // Triggered if stock runs out at any point before container arrives
+      if(sim.airGap>0){
+        const rawAir=sim.airGap;
+        if(klass==='Cp'){
+          // C+ gets flagged for review with suggestion
+          airQ=rnd5(rawAir);
+        } else {
+          airQ=rnd5(rawAir);
         }
       }
 
-      if(batQ>0&&airQ>0)otype='bat+air';
-      else if(batQ>0)otype='bat';
-      else if(airQ>0)otype='air';
+      // BAT ORDER
+      // Target = coverMonths × monthly demand
+      // Projected stock at container = simulation result
+      if(coverMonths>0){
+        const targetStock=Math.ceil(demandMonthly*coverMonths);
+        const batNeed=targetStock-sim.stockAtContainer;
+        if(batNeed>4) batQ=rnd5(batNeed);
+      }
+
+      if(batQ>0&&airQ>0) otype='bat+air';
+      else if(batQ>0) otype='bat';
+      else if(airQ>0) otype='air';
     }
 
     if(otype==='none')continue;
 
+    // daysLeft = when stock actually runs out (sim accounts for lager + ila + all POs)
+    // firstStockout=-1 means stock lasts until container — show daysToContainer+
+    const daysLeftSim = sim.firstStockout >= 0 ? sim.firstStockout : daysToContainer + 30;
+
     proposals.push({
-      ...p,trend,klass,demandMonthly,
-      batQ,airQ,otype,
-      uBat:batQ,uAir:airQ,
-      poAir:poBeforeAir,poBat:poBeforeCont,
-      daysLeft,daysLeftTotal,daysToContainer,
-      inPO,
-      suggestQty:otype==='fly'||otype==='air'?airQ:batQ,
+      ...p, trend, klass, demandMonthly,
+      batQ, airQ, otype,
+      uBat:batQ, uAir:airQ,
+      poAir:deliveries.filter(d=>d.day<=cfg.airLead).reduce((s,d)=>s+d.qty,0),
+      poBat:deliveries.filter(d=>d.day<=daysToContainer).reduce((s,d)=>s+d.qty,0),
+      poBatTotal,
+      daysLeft:daysLeftSim,
+      daysLeftTotal:daysLeftSim,
+      daysToContainer,
+      inPO, sim,
+      suggestQty:otype.includes('bat')?batQ:airQ,
       warns:[]
     });
   }
@@ -981,11 +1024,9 @@ function renderTable(){
     let badges='';if(t.includes('bat'))badges+=`<span class="badge bb">Båt</span> `;if(t.includes('air'))badges+=`<span class="badge ba">Flyg</span>`;if(t==='fly')badges+=`<span class="badge bf">Flyg</span>`;
     const fs=t==='bat+air'?`${p.batQ}+${p.airQ}`:t==='fly'?p.flyQ:p.batQ;
     const dl=p.daysLeft>=999?'—':p.daysLeft;
-    const dlCls=p.daysLeft<p.daysToContainer?'t-red':p.daysLeft<p.daysToContainer*0.7?'t-yellow':'t-green';
-    const dlDot=p.daysLeft<p.daysToContainer?'d-red':p.daysLeft<p.daysToContainer*0.7?'d-yellow':'d-green';
-    const dlTot=p.daysLeftTotal>=999?'—':p.daysLeftTotal;
-    const dlTotCls=p.daysLeftTotal<p.daysToContainer?'t-red':p.daysLeftTotal<p.daysToContainer+30?'t-yellow':'t-green';
-    const dlTotDot=p.daysLeftTotal<p.daysToContainer?'d-red':p.daysLeftTotal<p.daysToContainer+30?'d-yellow':'d-green';
+    // Red = runs out before container, Yellow = within 30 days of container, Green = safe
+    const dlCls=p.daysLeft<p.daysToContainer?'t-red':p.daysLeft<p.daysToContainer+30?'t-yellow':'t-green';
+    const dlDot=p.daysLeft<p.daysToContainer?'d-red':p.daysLeft<p.daysToContainer+30?'d-yellow':'d-green';
     const wt=hasWarn?p.warns.join(' | '):'';
     html+=`<tr class="${cls}" title="${wt}">
       <td><input type="checkbox" checked onchange="toggleReviewRow(${i},this.checked)"></td>
@@ -1000,8 +1041,7 @@ function renderTable(){
       <td style="text-align:right">${p.y1}</td>
       <td class="${tc}" style="font-size:11px">${tl}</td>
       <td style="text-align:center"><span style="font-size:11px;font-weight:700;color:${klassColor(p.klass)}">${klassLabel(p.klass)}</span></td>
-      <td><div class="days-cell"><div class="days-dot ${dlDot}"></div><span class="${dlCls}" title="Bara lagret, utan PO">${dl==='—'?'—':dl+' d'}</span></div></td>
-      <td><div class="days-cell"><div class="days-dot ${dlTotDot}"></div><span class="${dlTotCls}" title="Lager + ila + PO inom flyg-ledtid">${dlTot==='—'?'—':dlTot+' d'}</span></div></td>
+      <td><div class="days-cell"><div class="days-dot ${dlDot}"></div><span class="${dlCls}" title="Dagar tills lagret tar slut — inkl. ila och inkommande PO">${dl==='—'?'—':dl+' d'}</span></div></td>
       <td>${badges}</td>
       <td style="text-align:right;font-size:11px;color:#888">${fs}</td>
       <td>${t==='bat+air'?
