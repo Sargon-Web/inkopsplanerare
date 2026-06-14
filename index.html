@@ -661,15 +661,31 @@ function renderPOTable(){
 }
 
 // ── Calculation ──────────────────────────────────────────────────
+function normPOMatch(a,b){
+  // Match PO numbers regardless of # prefix or leading zeros
+  const clean=s=>String(s||'').replace(/^#+/,'').trim().toLowerCase();
+  return clean(a)===clean(b);
+}
 function getPOQty(filePOs,deadlineDays){
   const dl=new Date(Date.now()+deadlineDays*864e5);let tot=0;
-  filePOs.forEach(fp=>{const po=poList.find(pl=>normPN(pl.po)===normPN(fp.po));if(po&&po.sellable&&isValidDate(po.sellable)&&new Date(po.sellable)<=dl)tot+=fp.qty;});
+  filePOs.forEach(fp=>{
+    const po=poList.find(pl=>normPOMatch(pl.po,fp.po));
+    if(po&&po.sellable&&isValidDate(po.sellable)&&new Date(po.sellable)<=dl)tot+=fp.qty;
+  });
   return tot;
 }
-function hasActivePO(filePOs){return filePOs.some(fp=>poList.some(pl=>normPN(pl.po)===normPN(fp.po)&&pl.sellable));}
+function hasActivePO(filePOs){
+  return filePOs.some(fp=>poList.some(pl=>normPOMatch(pl.po,fp.po)&&pl.sellable));
+}
 function calcDaysLeft(p,airLead){
-  const daily=p.y1/365;if(daily<=0)return 999;
-  return Math.round((p.lager+getPOQty(p.filePOs,airLead))/daily);
+  // Use weighted daily demand (same as order calculation), not just y1/365
+  const a3=p.m3/3,a12=p.y1/12,w=0.5*p.m1+0.3*a3+0.2*a12;
+  const daily=w/30;
+  if(daily<=0)return 999;
+  // Credit: current stock + ila (incoming already in transit) + PO registered with ETA within airLead
+  const poNear=getPOQty(p.filePOs,airLead);
+  const available=p.lager+p.ila+poNear;
+  return Math.round(available/daily);
 }
 function rnd5(n){
   if(n<=0)return 0;
@@ -712,9 +728,9 @@ function runCalc(){
       if(isBatFamily){
         const covM=trend==='up'?cfg.cup:trend==='down'?cfg.cdn:cfg.cmid;
         const need=Math.ceil(daily*(daysToCont+covM*30));
-        if(need-(p.lager+poBat)>4)batQ=rnd5(need-(p.lager+poBat));
+        if(need-(p.lager+p.ila+poBat)>4)batQ=rnd5(need-(p.lager+p.ila+poBat));
         const stockout=daily>0?p.lager/daily:9999;
-        if(stockout<cfg.airLead){const gap=Math.ceil(daily*(cfg.airLead-stockout+10))-(p.lager+poAir);if(gap>4)airQ=rnd5(gap);}
+        if(stockout<cfg.airLead){const gap=Math.ceil(daily*(cfg.airLead-stockout+10))-(p.lager+p.ila+poAir);if(gap>4)airQ=rnd5(gap);}
         if(batQ>0&&airQ>0)otype='bat+air';else if(batQ>0)otype='bat';else if(airQ>0)otype='air';
       } else {
         if(p.y1>=cfg.minY||p.m3>=4){const hor=p.y1>=30?56:p.y1>=cfg.minY?42:35,gap=Math.ceil(daily*hor)-(p.lager+poAir);if(gap>2){flyQ=rnd5(gap);otype='fly';}}
