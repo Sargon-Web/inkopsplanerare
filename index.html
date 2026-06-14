@@ -580,8 +580,8 @@ function parseProducts(rows){
     const m1=parseFloat(r[i1m])||0,m3=parseFloat(r[i3m])||0,y1=parseFloat(r[i1a])||0,enhet=parseFloat(r[iE])||0;
     const lev=String(r[iL]||'').trim(),ll=lev.toLowerCase(),pl=pRaw.toLowerCase();
     let fam='other';
-    if(ll.includes('genuine leather')||pl.includes('äkta läder'))fam='genuine';
-    else if(ll.includes('3 card')||ll.includes('crazy horse')||pl.includes('crazy horse'))fam='3card';
+    if(ll.includes('genuine leather')||pl.includes('genuine leather')||pl.toLowerCase().includes('äkta läder')||ll.toLowerCase().includes('äkta läder'))fam='genuine';
+    else if(ll.includes('3 card')||ll.includes('crazy horse')||pl.includes('crazy horse')||pl.includes('3 card'))fam='3card';
     out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[...cPOs]});
     cPOs=[];
   }
