@@ -621,8 +621,20 @@ function parseProducts(rows){
     const m1=parseFloat(r[i1m])||0,m3=parseFloat(r[i3m])||0,y1=parseFloat(r[i1a])||0,enhet=parseFloat(r[iE])||0;
     const lev=String(r[iL]||'').trim(),ll=lev.toLowerCase(),pl=pRaw.toLowerCase();
     let fam='other';
-    if(ll.includes('genuine leather')||pl.includes('genuine leather')||pl.toLowerCase().includes('äkta läder')||ll.toLowerCase().includes('äkta läder'))fam='genuine';
-    else if(ll.includes('3 card')||ll.includes('crazy horse')||pl.includes('crazy horse')||pl.includes('3 card'))fam='3card';
+    // Exclude accessories (watch bands, etc) from genuine/3card families
+    const isAccessory=pl.includes('armband')||pl.includes('armklocka')||ll.includes('armband')||
+      pl.includes('skal')||pl.includes('tpu')||pl.includes('sportarmband')||
+      pl.includes('loop')||pl.includes('milanese')||pl.includes('nylon')||
+      pl.includes('silikon armband')||pl.includes('ocean wave')||pl.includes('alpine');
+    if(!isAccessory){
+      if(ll.includes('genuine leather')||pl.includes('genuine leather')||
+         (pl.includes('äkta läder')&&(pl.includes('fodral')||pl.includes('plånbok')))||
+         (ll.includes('äkta läder')&&(ll.includes('fodral')||ll.includes('case'))))
+        fam='genuine';
+      else if(ll.includes('3 card')||ll.includes('crazy horse')||
+              pl.includes('crazy horse')||pl.includes('3 card'))
+        fam='3card';
+    }
     out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[...cPOs]});
     cPOs=[];
   }
