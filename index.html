@@ -309,11 +309,41 @@ tr.removed td{opacity:.35}
         <input type="number" id="s-miny" value="15" min="5" max="100" onchange="saveCfg()">
         <div id="t-miny" class="tooltip"><strong>Minsta årsförsäljning</strong><br>Under denna gräns → ingen automatisk båtorder.<div class="ex">12/år → ingen båt. 18/år → båtorder föreslås.</div></div>
       </div>
-      <div class="fi"><label>Trend uppåt (1m ÷ 3m-snitt ≥)</label><input type="number" id="s-tup" value="0.9" step="0.05" min="0.5" max="2.0" onchange="saveCfg()"></div>
-      <div class="fi"><label>Trend nedåt (1m ÷ 3m-snitt &lt;)</label><input type="number" id="s-tdn" value="0.7" step="0.05" min="0.2" max="1.0" onchange="saveCfg()"></div>
-      <div class="fi"><label>Cover uppåt (mån)</label><input type="number" id="s-cup" value="4" min="1" max="8" onchange="saveCfg()"></div>
-      <div class="fi"><label>Cover stabil (mån)</label><input type="number" id="s-cmid" value="4" min="1" max="8" onchange="saveCfg()"></div>
-      <div class="fi"><label>Cover nedåt (mån)</label><input type="number" id="s-cdn" value="3" min="1" max="6" onchange="saveCfg()"></div>
+      <div class="fi" style="position:relative">
+        <label>Trend uppåt (1m ÷ 3m-snitt ≥) <button class="help-btn" onclick="toggleTip('t-tup')">?</button></label>
+        <input type="number" id="s-tup" value="0.9" step="0.05" min="0.5" max="2.0" onchange="saveCfg()">
+        <div id="t-tup" class="tooltip"><strong>Trend uppåt</strong><br>Om senaste månaden ÷ 3m-snitt ≥ detta = uppåttrend. Systemet använder högre efterfrågan vid beräkning.<div class="ex">Sålt 15 senaste mån, 3m-snitt 12 → kvot 1.25 ≥ 0.9 → uppåt ✓</div></div>
+      </div>
+      <div class="fi" style="position:relative">
+        <label>Trend nedåt (1m ÷ 3m-snitt &lt;) <button class="help-btn" onclick="toggleTip('t-tdn')">?</button></label>
+        <input type="number" id="s-tdn" value="0.7" step="0.05" min="0.2" max="1.0" onchange="saveCfg()">
+        <div id="t-tdn" class="tooltip"><strong>Trend nedåt</strong><br>Om kvoten är under detta = nedåttrend. Systemet använder lägre efterfrågan.<div class="ex">Sålt 5 senaste mån, 3m-snitt 10 → kvot 0.5 &lt; 0.7 → nedåt ✓</div></div>
+      </div>
+      <div class="fi" style="grid-column:1/-1;background:#f5f5f3;border-radius:8px;padding:10px 14px;border:1px solid #e5e5e2">
+        <label style="font-weight:600;color:#1a1a1a;margin-bottom:6px;display:block">Täckningsmål per klass (automatisk klassificering)</label>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:12px">
+          <div style="padding:8px;background:#E1F5EE;border-radius:6px;border:1px solid #9FE1CB">
+            <div style="font-weight:700;color:#0F6E56">Klass A</div>
+            <div style="color:#0F6E56;font-size:11px">≥ 30 st/år</div>
+            <div style="margin-top:4px;font-size:11px">7 mån täckning<br>Flyg-brygga: auto</div>
+          </div>
+          <div style="padding:8px;background:#E6F1FB;border-radius:6px;border:1px solid #B5D4F4">
+            <div style="font-weight:700;color:#185FA5">Klass B</div>
+            <div style="color:#185FA5;font-size:11px">15–29 st/år</div>
+            <div style="margin-top:4px;font-size:11px">6 mån täckning<br>Flyg-brygga: auto</div>
+          </div>
+          <div style="padding:8px;background:#FAEEDA;border-radius:6px;border:1px solid #FAC775">
+            <div style="font-weight:700;color:#854F0B">Klass C+</div>
+            <div style="color:#854F0B;font-size:11px">6–14 st/år</div>
+            <div style="margin-top:4px;font-size:11px">4 mån täckning<br>Flyg-brygga: granska</div>
+          </div>
+          <div style="padding:8px;background:#f5f5f3;border-radius:6px;border:1px solid #e5e5e2">
+            <div style="font-weight:700;color:#888">Klass C / D</div>
+            <div style="color:#888;font-size:11px">C: 2–5 st/år · D: &lt;2</div>
+            <div style="margin-top:4px;font-size:11px">C: safety-net flyg<br>D: köps ej</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div style="display:flex;gap:8px">
@@ -340,8 +370,17 @@ tr.removed td{opacity:.35}
       <label class="cb-item"><input type="checkbox" id="ff-oth" onchange="renderTable()"> Övriga</label>
     </div>
     <div class="filter-sep"></div>
+    <div class="filter-sep"></div>
+    <label>Klass:</label>
+    <div class="cb-group">
+      <label class="cb-item"><input type="checkbox" id="fk-A" checked onchange="renderTable()"> <span style="color:#0F6E56;font-weight:700">A</span></label>
+      <label class="cb-item"><input type="checkbox" id="fk-B" checked onchange="renderTable()"> <span style="color:#185FA5;font-weight:700">B</span></label>
+      <label class="cb-item"><input type="checkbox" id="fk-Cp" checked onchange="renderTable()"> <span style="color:#854F0B;font-weight:700">C+</span></label>
+      <label class="cb-item"><input type="checkbox" id="fk-C" checked onchange="renderTable()"> <span style="color:#888;font-weight:700">C</span></label>
+    </div>
+    <div class="filter-sep"></div>
     <label class="cb-item"><input type="checkbox" id="f-warn-only" onchange="renderTable()"> Bara varningar ⚠️</label>
-    <label class="cb-item"><input type="checkbox" id="f-crit-only" onchange="renderTable()"> Bara kritiska 🔴</label>
+    <label class="cb-item"><input type="checkbox" id="f-crit-only" onchange="renderTable()"> Tar slut före container 🔴</label>
     <input type="text" id="f-search" class="filter-search" placeholder="Sök art.nr eller namn..." oninput="renderTable()">
     <span style="margin-left:auto;font-size:11px;color:#888" id="row-count"></span>
   </div>
@@ -361,7 +400,9 @@ tr.removed td{opacity:.35}
           <th style="width:28px" onclick="sortBy('m3')">3m</th>
           <th style="width:30px" onclick="sortBy('y1')">1år</th>
           <th style="width:58px" onclick="sortBy('trend')">Trend</th>
-          <th style="width:90px" onclick="sortBy('daysLeft')">Dagar kvar <span id="sort-daysLeft">↑</span></th>
+          <th style="width:55px" onclick="sortBy('klass')">Klass <span id="sort-klass"></span></th>
+          <th style="width:80px" onclick="sortBy('daysLeft')">Dagar (lager) <span id="sort-daysLeft">↑</span></th>
+          <th style="width:80px" onclick="sortBy('daysLeftTotal')">Dagar (totalt) <span id="sort-daysLeftTotal"></span></th>
           <th style="width:75px">Typ</th>
           <th style="width:50px" onclick="sortBy('suggestQty')">Förslag</th>
           <th style="width:85px">Din order</th>
@@ -494,12 +535,12 @@ function loadFromStorage(key){try{const v=localStorage.getItem(key);return v?JSO
 function savePOs(){saveToStorage('inkop-po-list',poList);showSaved('po-saved-tag');}
 function loadPOs(){const v=loadFromStorage('inkop-po-list');if(v)poList=v;}
 function saveCfg(){
-  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),tup:gv('s-tup'),tdn:gv('s-tdn'),cup:gv('s-cup'),cmid:gv('s-cmid'),cdn:gv('s-cdn'),mode:orderMode};
+  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
   saveToStorage('inkop-cfg',c);showSaved('cfg-saved-tag');
 }
 function loadCfg(){
   const c=loadFromStorage('inkop-cfg');
-  if(c){['cont','sea','air','fly','miny','tup','tdn','cup','cmid','cdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined)el.value=c[k];});if(c.mode){orderMode=c.mode;setMode(c.mode);}}
+  if(c){['cont','sea','air','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined)el.value=c[k];});if(c.mode){orderMode=c.mode;setMode(c.mode);}}
 }
 function showSaved(id){const el=document.getElementById(id);if(!el)return;el.style.display='inline-block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);}
 function gv(id){const el=document.getElementById(id);return el?el.value:'';}
@@ -661,83 +702,199 @@ function renderPOTable(){
 }
 
 // ── Calculation ──────────────────────────────────────────────────
+
+// PO matching — handles #3014, 3014, etc.
 function normPOMatch(a,b){
-  // Match PO numbers regardless of # prefix or leading zeros
   const clean=s=>String(s||'').replace(/^#+/,'').trim().toLowerCase();
   return clean(a)===clean(b);
 }
+
+// Get PO quantity that is sellable before a given number of days from now
 function getPOQty(filePOs,deadlineDays){
-  const dl=new Date(Date.now()+deadlineDays*864e5);let tot=0;
+  const dl=new Date(Date.now()+deadlineDays*864e5);
+  let tot=0;
   filePOs.forEach(fp=>{
     const po=poList.find(pl=>normPOMatch(pl.po,fp.po));
     if(po&&po.sellable&&isValidDate(po.sellable)&&new Date(po.sellable)<=dl)tot+=fp.qty;
   });
   return tot;
 }
+
 function hasActivePO(filePOs){
   return filePOs.some(fp=>poList.some(pl=>normPOMatch(pl.po,fp.po)&&pl.sellable));
 }
-function calcDaysLeft(p,airLead){
-  // Use weighted daily demand (same as order calculation), not just y1/365
-  const a3=p.m3/3,a12=p.y1/12,w=0.5*p.m1+0.3*a3+0.2*a12;
-  const daily=w/30;
-  if(daily<=0)return 999;
-  // Credit: current stock + ila (incoming already in transit) + PO registered with ETA within airLead
-  const poNear=getPOQty(p.filePOs,airLead);
-  const available=p.lager+p.ila+poNear;
-  return Math.round(available/daily);
+
+// Classify product A/B/C+/C/D based on annual sales
+function classify(p){
+  const y=p.y1, m3=p.m3, m1=p.m1;
+  if(y>=30)return 'A';
+  if(y>=15)return 'B';
+  if(y>=6)return 'Cp'; // C+
+  if(y>=2)return 'C';
+  // Also check recent months for new products
+  if(m3>=8||m1>=3)return 'B'; // trending new product
+  if(m3>=3||m1>=1)return 'Cp';
+  return 'D';
 }
+
+// Cover months per class and trend
+function getCoverMonths(klass,trend){
+  if(klass==='A') return trend==='up'?7:trend==='down'?6:7; // A always gets generous cover
+  if(klass==='B') return 6;
+  if(klass==='Cp') return trend==='down'?3:4;
+  if(klass==='C') return 0; // no bat, safety-net flyg only
+  return 0; // D — nothing
+}
+
+// Weighted daily demand — uses trend to pick right base
+function getDemand(p,trend){
+  const a3=p.m3/3, a12=p.y1/12;
+  const w=0.5*p.m1+0.3*a3+0.2*a12;
+  if(trend==='up')return Math.max(w,p.m1,a3);
+  if(trend==='down')return Math.min(w,a3);
+  return w;
+}
+
+function getTrend(p,cfg){
+  const q=p.m3>0?p.m1/(p.m3/3):(p.m1>0?2:0);
+  return q>=cfg.tup?'up':q<cfg.tdn?'down':'stable';
+}
+
+// Dagar till slut = bara lagret (utan PO) — visar verklig risk
+function calcDaysLeftStock(p,daily){
+  if(daily<=0)return 999;
+  return Math.round(p.lager/daily);
+}
+
+// Dagar till slut inkl PO och ila — för sekundär info
+function calcDaysLeftTotal(p,daily,airLead){
+  if(daily<=0)return 999;
+  const poNear=getPOQty(p.filePOs,airLead);
+  return Math.round((p.lager+p.ila+poNear)/daily);
+}
+
 function rnd5(n){
   if(n<=0)return 0;
   const s=[5,10,15,20,25,30,40,50,60,70,80,90,100,120,150,200,250,300];
   for(const v of s)if(n<=v)return v;
   return Math.ceil(n/50)*50;
 }
-function getTrend(p,cfg){const q=p.m3>0?p.m1/(p.m3/3):(p.m1>0?2:0);return q>=cfg.tup?'up':q<cfg.tdn?'down':'stable';}
-function getDemand(p,trend){
-  const a3=p.m3/3,a12=p.y1/12,w=0.5*p.m1+0.3*a3+0.2*a12;
-  if(trend==='up')return Math.max(w,p.m1,a3);if(trend==='down')return Math.min(w,a3);return w;
-}
+
 function getWarnings(p){
-  const w=[],avg=p.y1/12,qty=p.otype==='fly'?p.uFly:p.uBat;
-  if(p.trend==='down'&&qty>avg*4)w.push(`Stor order (${qty} st) på nedåtgående produkt — ca ${Math.round(avg)}/mån.`);
-  if(p.poBat>p.y1*0.4&&p.poBat>20)w.push(`${p.poBat} st redan på väg — mer än 40% av årsförsäljningen.`);
-  if(p.daysLeft<14&&p.otype==='bat'&&!p.uAir)w.push(`Lagret räcker ${p.daysLeft} dagar — kontrollera om flyg-brygga behövs.`);
+  const w=[];
+  const avg=p.demandMonthly;
+  // Stockout before container arrives
+  if(p.daysLeft<p.daysToContainer&&p.uAir===0&&p.otype!=='air')
+    w.push(`Lagret tar slut om ${p.daysLeft} dagar — container anländer om ${p.daysToContainer} dagar. Flyg-brygga kan behövas.`);
+  // Large order on declining product
+  if(p.trend==='down'&&p.uBat>avg*5)
+    w.push(`Stor båtorder (${p.uBat} st) på nedåtgående produkt — säljer ca ${Math.round(avg)}/mån.`);
+  // Much already on the way
+  if(p.poBat>p.y1*0.5&&p.poBat>30)
+    w.push(`${p.poBat} st redan på väg i PO — mer än 50% av årsförsäljningen.`);
+  // C+ large order warning
+  if(p.klass==='Cp'&&p.uBat>avg*6)
+    w.push(`C+-produkt med stor order — granska om båtorder är motiverad.`);
   return w;
 }
 
 function runCalc(){
-  const cfg={contDate:gv('s-cont'),seaLead:parseInt(gv('s-sea'))||155,airLead:parseInt(gv('s-air'))||52,flyLead:parseInt(gv('s-fly'))||21,minY:parseInt(gv('s-miny'))||15,tup:parseFloat(gv('s-tup'))||0.9,tdn:parseFloat(gv('s-tdn'))||0.7,cup:parseInt(gv('s-cup'))||4,cmid:parseInt(gv('s-cmid'))||4,cdn:parseInt(gv('s-cdn'))||3};
-  const today=new Date(),contMs=cfg.contDate?new Date(cfg.contDate):new Date(today.getTime()+150*864e5),daysToCont=Math.max(0,Math.round((contMs-today)/864e5));
+  const cfg={
+    contDate:gv('s-cont'),
+    seaLead:parseInt(gv('s-sea'))||134,
+    airLead:parseInt(gv('s-air'))||55,
+    tup:parseFloat(gv('s-tup'))||0.9,
+    tdn:parseFloat(gv('s-tdn'))||0.7,
+  };
+  const today=new Date();
+  const contMs=cfg.contDate?new Date(cfg.contDate):new Date(today.getTime()+134*864e5);
+  const daysToContainer=Math.max(0,Math.round((contMs-today)/864e5));
+
   proposals=[];removedRows=new Set();
+
   for(const p of products){
     if(p.y1===0&&p.m3===0&&p.m1===0)continue;
-    const trend=getTrend(p,cfg),daily=getDemand(p,trend)/30;
-    const isBatFamily=(p.family==='genuine'||p.family==='3card')&&p.y1>=cfg.minY;
-    const poAir=getPOQty(p.filePOs,cfg.airLead),poBat=getPOQty(p.filePOs,cfg.seaLead);
-    const daysLeft=calcDaysLeft(p,cfg.airLead),inPO=hasActivePO(p.filePOs);
-    let batQ=0,airQ=0,flyQ=0,otype='none';
-    if(orderMode==='fly'){
-      if(p.y1>0||p.m3>0){
-        const lead=isBatFamily?cfg.airLead:cfg.flyLead;
-        const need=Math.ceil(daily*lead*2);
-        const gap=need-(p.lager+poAir);
-        if(gap>2){flyQ=rnd5(gap);otype='fly';}
-      }
+
+    const trend=getTrend(p,cfg);
+    const demandMonthly=getDemand(p,trend);
+    const daily=demandMonthly/30;
+
+    const klass=classify(p);
+    const coverMonths=getCoverMonths(klass,trend);
+
+    // PO quantities credited correctly
+    const poBeforeAir=getPOQty(p.filePOs,cfg.airLead);    // PO säljbar inom flyg-ledtid
+    const poBeforeCont=getPOQty(p.filePOs,daysToContainer); // PO säljbar innan container
+
+    const daysLeft=calcDaysLeftStock(p,daily);             // bara lagret
+    const daysLeftTotal=calcDaysLeftTotal(p,daily,cfg.airLead); // inkl PO+ila
+    const inPO=hasActivePO(p.filePOs);
+
+    let batQ=0,airQ=0,otype='none';
+
+    // ── D: skip ──────────────────────────────────────────────
+    if(klass==='D')continue;
+
+    // ── C: safety-net flyg only ───────────────────────────────
+    if(klass==='C'){
+      // Only if stock is zero or near zero and nothing on the way
+      if(p.lager+p.ila+poBeforeAir<=2&&daily>0){
+        airQ=5; // safety-net
+        otype='air';
+      } else continue;
     } else {
-      if(isBatFamily){
-        const covM=trend==='up'?cfg.cup:trend==='down'?cfg.cdn:cfg.cmid;
-        const need=Math.ceil(daily*(daysToCont+covM*30));
-        if(need-(p.lager+p.ila+poBat)>4)batQ=rnd5(need-(p.lager+p.ila+poBat));
-        const stockout=daily>0?p.lager/daily:9999;
-        if(stockout<cfg.airLead){const gap=Math.ceil(daily*(cfg.airLead-stockout+10))-(p.lager+p.ila+poAir);if(gap>4)airQ=rnd5(gap);}
-        if(batQ>0&&airQ>0)otype='bat+air';else if(batQ>0)otype='bat';else if(airQ>0)otype='air';
-      } else {
-        if(p.y1>=cfg.minY||p.m3>=4){const hor=p.y1>=30?56:p.y1>=cfg.minY?42:35,gap=Math.ceil(daily*hor)-(p.lager+poAir);if(gap>2){flyQ=rnd5(gap);otype='fly';}}
+      // ── A, B, C+: calculate bat + air bridge ─────────────────
+
+      // BAT ORDER
+      // Target stock = what we want available when container arrives
+      // = coverMonths × monthly demand
+      // Projected stock at container arrival = lager + ila + PO before container - sold during lead time
+      if(coverMonths>0){
+        const soldDuringLead=daily*daysToContainer;
+        const projectedAtArrival=Math.max(0,p.lager+p.ila+poBeforeCont-soldDuringLead);
+        const targetStock=Math.ceil(demandMonthly*coverMonths);
+        const batNeed=targetStock-projectedAtArrival;
+        if(batNeed>4)batQ=rnd5(batNeed);
       }
+
+      // AIR BRIDGE
+      // Only if stock runs out before container arrives (or before PO arrives)
+      // Gap = what is missing to survive until container is sellable
+      const stockoutDay=daily>0?p.lager/daily:9999;
+      if(stockoutDay<daysToContainer){
+        // Stock will run out before container — check if PO covers it
+        const availableUntilCont=p.lager+p.ila+poBeforeAir;
+        const neededUntilCont=Math.ceil(daily*daysToContainer);
+        const gap=neededUntilCont-availableUntilCont;
+        if(gap>2){
+          // C+ gets flagged for review, not auto-ordered
+          if(klass==='Cp'){
+            airQ=rnd5(gap);
+            otype=batQ>0?'bat+air':'air';
+            // Mark as review
+          } else {
+            airQ=rnd5(gap);
+          }
+        }
+      }
+
+      if(batQ>0&&airQ>0)otype='bat+air';
+      else if(batQ>0)otype='bat';
+      else if(airQ>0)otype='air';
     }
+
     if(otype==='none')continue;
-    proposals.push({...p,trend,batQ,airQ,flyQ,otype,uBat:batQ,uAir:airQ,uFly:flyQ,poAir,poBat,daysLeft,inPO,suggestQty:otype==='fly'?flyQ:batQ,warns:[]});
+
+    proposals.push({
+      ...p,trend,klass,demandMonthly,
+      batQ,airQ,otype,
+      uBat:batQ,uAir:airQ,
+      poAir:poBeforeAir,poBat:poBeforeCont,
+      daysLeft,daysLeftTotal,daysToContainer,
+      inPO,
+      suggestQty:otype==='fly'||otype==='air'?airQ:batQ,
+      warns:[]
+    });
   }
   proposals.forEach(p=>{p.warns=getWarnings(p);});
   goTo(3);
@@ -751,21 +908,31 @@ function sortBy(col){
   renderTable();
 }
 
+function klassLabel(k){return k==='Cp'?'C+':k;}
+function klassColor(k){return{A:'#0F6E56',B:'#185FA5',Cp:'#854F0B',C:'#888',D:'#aaa'}[k]||'#888';}
+
 function renderMetrics(){
   const act=proposals.filter((_,i)=>!removedRows.has(i));
-  const warn=act.filter(p=>p.warns&&p.warns.length>0).length,crit=act.filter(p=>p.daysLeft<14).length;
-  document.getElementById('metrics').innerHTML=`
-    <div class="metric"><div class="lbl">Båt</div><div class="val">${act.filter(p=>p.otype.includes('bat')).length}</div></div>
-    <div class="metric"><div class="lbl">Flyg-brygga</div><div class="val">${act.filter(p=>p.otype.includes('air')).length}</div></div>
-    <div class="metric"><div class="lbl">Flyg</div><div class="val">${act.filter(p=>p.otype==='fly').length}</div></div>
-    <div class="metric" style="${crit>0?'background:#fcebeb;border-color:#f7c1c1':''}"><div class="lbl">Kritiska 🔴</div><div class="val" style="color:${crit>0?'#a32d2d':''}">${crit}</div></div>
-    <div class="metric" style="${warn>0?'background:#fffbf0;border-color:#FAC775':''}"><div class="lbl">Varningar ⚠️</div><div class="val" style="color:${warn>0?'#854F0B':''}">${warn}</div></div>`;
+  const warn=act.filter(p=>p.warns&&p.warns.length>0).length;
+  const crit=act.filter(p=>p.daysLeft<p.daysToContainer).length;
+  const aCount=act.filter(p=>p.klass==='A').length;
+  const bCount=act.filter(p=>p.klass==='B').length;
+  const cpCount=act.filter(p=>p.klass==='Cp').length;
+  const cCount=act.filter(p=>p.klass==='C').length;
+  document.getElementById('metrics').innerHTML=
+    `<div class="metric"><div class="lbl">Båt</div><div class="val">${act.filter(p=>p.otype.includes('bat')).length}</div></div>`+
+    `<div class="metric"><div class="lbl">Flyg-brygga</div><div class="val">${act.filter(p=>p.otype.includes('air')).length}</div></div>`+
+    `<div class="metric" style="${crit>0?'background:#fcebeb;border-color:#f7c1c1':''}"><div class="lbl">Tar slut före cont.</div><div class="val" style="color:${crit>0?'#a32d2d':''}">${crit}</div></div>`+
+    `<div class="metric" style="${warn>0?'background:#fffbf0;border-color:#FAC775':''}"><div class="lbl">Varningar</div><div class="val" style="color:${warn>0?'#854F0B':''}">${warn}</div></div>`+
+    `<div class="metric"><div class="lbl">Klasser</div><div style="font-size:12px;margin-top:6px"><span style="color:#0F6E56;font-weight:600">A:${aCount}</span> <span style="color:#185FA5;font-weight:600">B:${bCount}</span> <span style="color:#854F0B;font-weight:600">C+:${cpCount}</span> <span style="color:#888;font-weight:600">C:${cCount}</span></div></div>`;
 }
 
 function renderTable(){
   const fBat=document.getElementById('f-bat').checked,fAir=document.getElementById('f-air').checked,fFly=document.getElementById('f-fly').checked;
   const ffGen=document.getElementById('ff-gen').checked,ff3c=document.getElementById('ff-3c').checked,ffOth=document.getElementById('ff-oth').checked;
   const fWarn=document.getElementById('f-warn-only').checked,fCrit=document.getElementById('f-crit-only').checked;
+  const fkA=document.getElementById('fk-A').checked,fkB=document.getElementById('fk-B').checked;
+  const fkCp=document.getElementById('fk-Cp').checked,fkC=document.getElementById('fk-C').checked;
   const sr=document.getElementById('f-search').value.toLowerCase();
 
   let rows=[...proposals.entries()].map(([i,p])=>({i,p})).filter(({i,p})=>{
@@ -775,8 +942,11 @@ function renderTable(){
     if(!typeOk)return false;
     const famOk=(ffGen&&p.family==='genuine')||(ff3c&&p.family==='3card')||(ffOth&&p.family==='other');
     if(!famOk)return false;
+    // Klass filter
+    const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&p.klass==='C');
+    if(!klassOk)return false;
     if(fWarn&&(!p.warns||p.warns.length===0))return false;
-    if(fCrit&&p.daysLeft>=14)return false;
+    if(fCrit&&p.daysLeft>=p.daysToContainer)return false;
     if(sr&&!p.artNr.toString().includes(sr)&&!p.produkt.toLowerCase().includes(sr))return false;
     return true;
   });
@@ -796,8 +966,11 @@ function renderTable(){
     let badges='';if(t.includes('bat'))badges+=`<span class="badge bb">Båt</span> `;if(t.includes('air'))badges+=`<span class="badge ba">Flyg</span>`;if(t==='fly')badges+=`<span class="badge bf">Flyg</span>`;
     const fs=t==='bat+air'?`${p.batQ}+${p.airQ}`:t==='fly'?p.flyQ:p.batQ;
     const dl=p.daysLeft>=999?'—':p.daysLeft;
-    const dlCls=p.daysLeft<14?'t-red':p.daysLeft<31?'t-yellow':'t-green';
-    const dlDot=p.daysLeft<14?'d-red':p.daysLeft<31?'d-yellow':'d-green';
+    const dlCls=p.daysLeft<p.daysToContainer?'t-red':p.daysLeft<p.daysToContainer*0.7?'t-yellow':'t-green';
+    const dlDot=p.daysLeft<p.daysToContainer?'d-red':p.daysLeft<p.daysToContainer*0.7?'d-yellow':'d-green';
+    const dlTot=p.daysLeftTotal>=999?'—':p.daysLeftTotal;
+    const dlTotCls=p.daysLeftTotal<p.daysToContainer?'t-red':p.daysLeftTotal<p.daysToContainer+30?'t-yellow':'t-green';
+    const dlTotDot=p.daysLeftTotal<p.daysToContainer?'d-red':p.daysLeftTotal<p.daysToContainer+30?'d-yellow':'d-green';
     const wt=hasWarn?p.warns.join(' | '):'';
     html+=`<tr class="${cls}" title="${wt}">
       <td><input type="checkbox" checked onchange="toggleReviewRow(${i},this.checked)"></td>
@@ -811,7 +984,9 @@ function renderTable(){
       <td style="text-align:right">${p.m3}</td>
       <td style="text-align:right">${p.y1}</td>
       <td class="${tc}" style="font-size:11px">${tl}</td>
-      <td><div class="days-cell"><div class="days-dot ${dlDot}"></div><span class="${dlCls}">${dl==='—'?'—':dl+' dagar'}</span></div></td>
+      <td style="text-align:center"><span style="font-size:11px;font-weight:700;color:${klassColor(p.klass)}">${klassLabel(p.klass)}</span></td>
+      <td><div class="days-cell"><div class="days-dot ${dlDot}"></div><span class="${dlCls}" title="Bara lagret, utan PO">${dl==='—'?'—':dl+' d'}</span></div></td>
+      <td><div class="days-cell"><div class="days-dot ${dlTotDot}"></div><span class="${dlTotCls}" title="Lager + ila + PO inom flyg-ledtid">${dlTot==='—'?'—':dlTot+' d'}</span></div></td>
       <td>${badges}</td>
       <td style="text-align:right;font-size:11px;color:#888">${fs}</td>
       <td>${t==='bat+air'?
