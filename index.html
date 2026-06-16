@@ -750,6 +750,19 @@ function loadFile(file,mode){
 }
 
 
+function isValidDate(s){
+  if(!s)return false;
+  const d=new Date(s);
+  return !isNaN(d)&&s.match(/^\d{4}-\d{2}-\d{2}$/)&&d.getFullYear()>=2020&&d.getFullYear()<=2035;
+}
+function calcSellable(eta,inlev){
+  if(!isValidDate(eta))return'';
+  const d=new Date(eta);
+  d.setDate(d.getDate()+(parseInt(inlev)||14));
+  return d.toISOString().split('T')[0];
+}
+function normPN(s){return String(s||'').replace(/^#/,'').trim().toLowerCase();}
+
 // ── PO register ──────────────────────────────────────────────────
 function importPOsFromFile(){
   if(products.length===0){showPOAlert('Ladda upp en fil först (steg 1).','alert-warn');return;}
