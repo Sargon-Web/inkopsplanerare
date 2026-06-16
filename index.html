@@ -1245,12 +1245,28 @@ function buildPreview(type){
 }
 
 function getFilteredRows(){
-  const fBat=document.getElementById('f-bat').checked,fAir=document.getElementById('f-air').checked,fFly=document.getElementById('f-fly').checked;
-  const ffGen=document.getElementById('ff-gen').checked,ff3c=document.getElementById('ff-3c').checked,ffOth=document.getElementById('ff-oth').checked;
-  const fWarn=document.getElementById('f-warn-only').checked,fCrit=document.getElementById('f-crit-only').checked;
-  const fkA=document.getElementById('fk-A').checked,fkB=document.getElementById('fk-B').checked;
-  const fkCp=document.getElementById('fk-Cp').checked,fkC=document.getElementById('fk-C').checked;
-  const sr=document.getElementById('f-search').value.toLowerCase();
+  // Use saved filter state (from when user was on step 4) if checkboxes not in DOM
+  let fBat,fAir,fFly,ffGen,ff3c,ffOth,fkA,fkB,fkCp,fkC,fWarn,fCrit,sr;
+  try{
+    fBat=document.getElementById('f-bat').checked;
+    fAir=document.getElementById('f-air').checked;
+    fFly=document.getElementById('f-fly').checked;
+    ffGen=document.getElementById('ff-gen').checked;
+    ff3c=document.getElementById('ff-3c').checked;
+    ffOth=document.getElementById('ff-oth').checked;
+    fkA=document.getElementById('fk-A').checked;
+    fkB=document.getElementById('fk-B').checked;
+    fkCp=document.getElementById('fk-Cp').checked;
+    fkC=document.getElementById('fk-C').checked;
+    fWarn=document.getElementById('f-warn-only').checked;
+    fCrit=document.getElementById('f-crit-only').checked;
+    sr=document.getElementById('f-search').value.toLowerCase();
+    // Save current state
+    savedFilter={fBat,fAir,fFly,ffGen,ff3c,ffOth,fkA,fkB,fkCp,fkC,fWarn,fCrit,sr};
+  }catch(e){
+    // Fall back to saved state
+    ({fBat,fAir,fFly,ffGen,ff3c,ffOth,fkA,fkB,fkCp,fkC,fWarn,fCrit,sr}=savedFilter);
+  }
   return proposals.filter((p,i)=>{
     if(removedRows.has(i))return false;
     const t=p.otype;
@@ -1304,8 +1320,31 @@ function showGlobalStatus(msg,cls){
 }
 
 // ── Navigation ───────────────────────────────────────────────────
+// Store active filter state globally so confirm/export uses same filter
+let savedFilter={fBat:true,fAir:true,fFly:false,ffGen:true,ff3c:true,ffOth:false,fkA:true,fkB:true,fkCp:true,fkC:true,fWarn:false,fCrit:false,sr:''};
+
+function saveFilterState(){
+  try{
+    savedFilter={
+      fBat:document.getElementById('f-bat').checked,
+      fAir:document.getElementById('f-air').checked,
+      fFly:document.getElementById('f-fly').checked,
+      ffGen:document.getElementById('ff-gen').checked,
+      ff3c:document.getElementById('ff-3c').checked,
+      ffOth:document.getElementById('ff-oth').checked,
+      fkA:document.getElementById('fk-A').checked,
+      fkB:document.getElementById('fk-B').checked,
+      fkCp:document.getElementById('fk-Cp').checked,
+      fkC:document.getElementById('fk-C').checked,
+      fWarn:document.getElementById('f-warn-only').checked,
+      fCrit:document.getElementById('f-crit-only').checked,
+      sr:document.getElementById('f-search').value.toLowerCase()
+    };
+  }catch(e){}
+}
+
 function goTo(n){
-  if(n===4)renderConfirm();
+  if(n===4){saveFilterState();renderConfirm();}
   if(n===5){
     setExpTab('test');
     document.getElementById('preview-test').innerHTML='';
