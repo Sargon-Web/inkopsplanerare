@@ -183,16 +183,36 @@ tr.removed td{opacity:.35}
 <!-- V0: IMPORTERA -->
 <div id="v0">
   <div class="card">
+    <h3 style="font-size:14px;font-weight:500;margin-bottom:6px">Steg 1 — Ladda upp 12-månadersfil</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:1rem">Exportera "Alla produkter från leverantören" med 1 års data från Kodmyran. Ladda upp den här first.</p>
     <div class="upload-area" id="drop-zone" onclick="document.getElementById('fi').click()">
-      <div style="font-size:48px;margin-bottom:12px">📊</div>
-      <strong style="font-size:15px;display:block;margin-bottom:6px">Ladda upp exportfil</strong>
+      <div style="font-size:40px;margin-bottom:10px">📊</div>
+      <strong style="font-size:14px;display:block;margin-bottom:5px">Ladda upp 12-månadersfil</strong>
       <p style="color:#888;font-size:13px">Klicka eller dra och släpp .xlsx här</p>
-      <p style="font-size:11px;color:#aaa;margin-top:8px">Cheng: Art.nr · Produkt · 1m · 3m · 1å · Til · Ila · Grä</p>
     </div>
     <input type="file" id="fi" accept=".xlsx" style="display:none">
   </div>
   <div id="file-status"></div>
-  <div class="alert alert-info">ℹ️ Exportera "Alla produkter från leverantören" med 1 års data. PO-registret sparas automatiskt och rensas från levererade orders vid nästa filimport.</div>
+
+  <div id="merge-section" style="display:none">
+    <div class="card" style="border-color:#9FE1CB">
+      <h3 style="font-size:14px;font-weight:500;margin-bottom:6px;color:#0F6E56">✅ Steg 2 — Lägg till 3-månadersfil (valfritt men rekommenderat)</h3>
+      <p style="font-size:12px;color:#666;margin-bottom:1rem">3-månadersfilen kompletterar med nya produkter och PO-information som kan saknas i 12-månadersfilen. Inga dubletter skapas — systemet mergar automatiskt.</p>
+      <div class="upload-area" id="drop-zone-2" onclick="document.getElementById('fi2').click()" style="padding:1.5rem;border-style:solid;border-color:#9FE1CB">
+        <div style="font-size:32px;margin-bottom:8px">📋</div>
+        <strong style="font-size:13px;display:block;margin-bottom:4px">Ladda upp 3-månadersfil</strong>
+        <p style="color:#888;font-size:12px">Klicka eller dra och släpp .xlsx här</p>
+      </div>
+      <input type="file" id="fi2" accept=".xlsx" style="display:none">
+      <div id="merge-status" style="margin-top:0.75rem"></div>
+    </div>
+  </div>
+
+  <div class="alert alert-info">ℹ️ Ladda alltid upp 12-månadersfilen först, sedan 3-månadersfilen. PO-registret sparas automatiskt och rensas från levererade orders vid nästa filimport.</div>
+  <div id="v0-continue" style="display:none;margin-top:1rem">
+    <button class="btn btn-primary" onclick="goTo(1)">PO-register →</button>
+    <span style="font-size:12px;color:#888;margin-left:10px">Du kan också hoppa över 3-månadersfilen och fortsätta direkt</span>
+  </div>
 </div>
 
 <!-- V1: PO-REGISTER -->
@@ -575,80 +595,93 @@ function useCalcDate(){
 }
 
 // ── File upload ──────────────────────────────────────────────────
-document.getElementById('fi').addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f);});
+document.getElementById('fi').addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f,'12m');});
 const dz=document.getElementById('drop-zone');
 dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.background='#f1efe8';});
 dz.addEventListener('dragleave',()=>dz.style.background='');
-dz.addEventListener('drop',e=>{e.preventDefault();dz.style.background='';const f=e.dataTransfer.files[0];if(f)loadFile(f);});
+dz.addEventListener('drop',e=>{e.preventDefault();dz.style.background='';const f=e.dataTransfer.files[0];if(f)loadFile(f,'12m');});
 
-function loadFile(file){
+// 3M file handlers — init after DOM ready
+function init3mHandlers(){
+  const fi2=document.getElementById('fi2');
+  const dz2=document.getElementById('drop-zone-2');
+  if(fi2)fi2.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f,'3m');});
+  if(dz2){
+    dz2.addEventListener('dragover',e=>{e.preventDefault();dz2.style.background='#f0fdf8';});
+    dz2.addEventListener('dragleave',()=>{dz2.style.background='';});
+    dz2.addEventListener('drop',e=>{e.preventDefault();dz2.style.background='';const f=e.dataTransfer.files[0];if(f)loadFile(f,'3m');});
+  }
+}
+
+function loadFile(file,mode){
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=async e=>{
     const wb=XLSX.read(e.target.result,{type:'binary'});
     const raw=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
-    products=parseProducts(raw);
-    const activePOs=new Set();products.forEach(p=>p.filePOs.forEach(fp=>activePOs.add(normPN(fp.po))));
-    const before=poList.length;poList=poList.filter(p=>activePOs.has(normPN(p.po)));const cleaned=before-poList.length;
-    savePOs();
-    let msg=`${file.name} inläst — ${products.length} produkter.`;
-    if(cleaned>0)msg+=` ${cleaned} levererad${cleaned>1?'e':''} PO rensad${cleaned>1?'e':''}.`;
-    document.getElementById('file-status').innerHTML=`<div class="alert alert-ok">✅ ${msg}</div>`;
-    setTimeout(()=>goTo(1),700);
+    const parsed=parseProducts(raw);
+
+    if(mode==='12m'){
+      // First file — set as base
+      products=parsed;
+      // Clean PO list
+      const activePOs=new Set();
+      products.forEach(p=>p.filePOs.forEach(fp=>activePOs.add(normPN(fp.po))));
+      const before=poList.length;
+      poList=poList.filter(p=>activePOs.has(normPN(p.po)));
+      const cleaned=before-poList.length;
+      await savePOs();
+      let msg=`✅ ${file.name} inläst — ${products.length} produkter.`;
+      if(cleaned>0)msg+=` ${cleaned} levererad${cleaned>1?'e':''} PO rensad${cleaned>1?'e':''}.`;
+      msg+=` Ladda nu upp 3-månadersfilen nedan för komplett PO-information.`;
+      document.getElementById('file-status').innerHTML=`<div class="alert alert-ok">${msg}</div>`;
+      // Show 3m upload section and continue button
+      const ms=document.getElementById('merge-section');
+      if(ms){ms.style.display='block';init3mHandlers();}
+      const cb=document.getElementById('v0-continue');
+      if(cb)cb.style.display='block';
+
+    } else {
+      // 3M file — smart merge
+      const existing=new Map(products.map(p=>[p.artNr,p]));
+      let addedProds=0, addedPOs=0;
+
+      for(const p3 of parsed){
+        if(existing.has(p3.artNr)){
+          // Merge PO info into existing product
+          const p12=existing.get(p3.artNr);
+          for(const po3 of p3.filePOs){
+            const already=p12.filePOs.some(po=>normPN(po.po)===normPN(po3.po)&&po.qty===po3.qty);
+            if(!already){
+              // Remove old entry for same PO if exists with different qty
+              p12.filePOs=p12.filePOs.filter(po=>normPN(po.po)!==normPN(po3.po));
+              p12.filePOs.push(po3);
+              addedPOs++;
+            }
+          }
+          // Update lager/ila if 3m has fresher data (more recent export)
+          // Keep 12m sales data (y1,m3,m1) but update stock if 3m is newer
+        } else {
+          // New product only in 3m — add it
+          products.push(p3);
+          addedProds++;
+        }
+      }
+
+      const statusEl=document.getElementById('merge-status');
+      let msg=`✅ ${file.name} inläst.`;
+      if(addedProds>0)msg+=` ${addedProds} nya produkter tillagda.`;
+      if(addedPOs>0)msg+=` PO-info kompletterad för produkter (${addedPOs} PO-rader).`;
+      if(addedProds===0&&addedPOs===0)msg+=` Ingen ny information att lägga till.`;
+      if(statusEl)statusEl.innerHTML=`<div class="alert alert-ok">${msg}</div>`;
+
+      // Update merge section styling
+      const dz2=document.getElementById('drop-zone-2');
+      if(dz2){dz2.style.background='#f0fdf8';dz2.style.borderColor='#1D9E75';}
+    }
   };
   reader.readAsBinaryString(file);
 }
 
-function normPN(s){return String(s||'').replace(/^#/,'').trim().toLowerCase();}
-function isValidDate(s){if(!s)return false;const d=new Date(s);return !isNaN(d)&&s.match(/^\d{4}-\d{2}-\d{2}$/)&&d.getFullYear()>=2020&&d.getFullYear()<=2035;}
-function calcSellable(eta,inlev){if(!isValidDate(eta))return'';const d=new Date(eta);d.setDate(d.getDate()+(parseInt(inlev)||14));return d.toISOString().split('T')[0];}
-
-function parseProducts(rows){
-  let hdr=-1;
-  for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c).toLowerCase().trim());if(r.some(c=>c.includes('art'))&&r.some(c=>c==='1m'||c.includes('1å')||c.includes('1a'))){hdr=i;break;}}
-  if(hdr<0){alert('Kunde inte hitta kolumnrubriker. Kontrollera att rätt fil är vald.');return[];}
-  const H=rows[hdr].map(c=>String(c).toLowerCase().trim());
-  const ix=n=>H.findIndex(h=>h.includes(n));
-  const iA=ix('art'),iP=ix('produkt'),iL=H.findIndex(h=>h.startsWith('lev')),iT=ix('til'),iI=ix('ila'),
-        iG=H.findIndex(h=>h==='grä'||h==='gra'||h.startsWith('gr')),
-        i1m=H.findIndex(h=>h==='1m'),i3m=H.findIndex(h=>h==='3m'),
-        i1a=H.findIndex(h=>h==='1å'||h==='1a'||h.includes('\u00e5')||h==='1ã¥'),
-        iE=H.findIndex(h=>h.includes('enhet'));
-  const out=[];
-  for(let i=hdr+1;i<rows.length;i++){
-    const r=rows[i];if(!r||r.every(c=>c===''||c===null||c===undefined))continue;
-    const aRaw=String(r[iA]||'').trim(),pRaw=String(r[iP]||'').trim();
-    // PO row comes AFTER product row — collect and attach to last product
-    if(!aRaw&&pRaw.toLowerCase().includes('inköpsorder')){
-      const m=pRaw.match(/#(\w+)[\s\S]*?(\d+)\s*antal/i);
-      if(m&&out.length>0){
-        // Attach to the LAST product added
-        out[out.length-1].filePOs.push({po:m[1],qty:parseInt(m[2])});
-      }
-      continue;
-    }
-    if(!aRaw||isNaN(parseInt(aRaw))){continue;}
-    const til=parseFloat(r[iT])||0,ila=parseFloat(r[iI])||0,gra=parseFloat(r[iG])||0;
-    const m1=parseFloat(r[i1m])||0,m3=parseFloat(r[i3m])||0,y1=parseFloat(r[i1a])||0,enhet=parseFloat(r[iE])||0;
-    const lev=String(r[iL]||'').trim(),ll=lev.toLowerCase(),pl=pRaw.toLowerCase();
-    let fam='other';
-    // Exclude accessories (watch bands, etc) from genuine/3card families
-    const isAccessory=pl.includes('armband')||pl.includes('armklocka')||ll.includes('armband')||
-      pl.includes('skal')||pl.includes('tpu')||pl.includes('sportarmband')||
-      pl.includes('loop')||pl.includes('milanese')||pl.includes('nylon')||
-      pl.includes('silikon armband')||pl.includes('ocean wave')||pl.includes('alpine');
-    if(!isAccessory){
-      if(ll.includes('genuine leather')||pl.includes('genuine leather')||
-         (pl.includes('äkta läder')&&(pl.includes('fodral')||pl.includes('plånbok')))||
-         (ll.includes('äkta läder')&&(ll.includes('fodral')||ll.includes('case'))))
-        fam='genuine';
-      else if(ll.includes('3 card')||ll.includes('crazy horse')||
-              pl.includes('crazy horse')||pl.includes('3 card'))
-        fam='3card';
-    }
-    out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[]});
-  }
-  return out;
-}
 
 // ── PO register ──────────────────────────────────────────────────
 function importPOsFromFile(){
