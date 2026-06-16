@@ -666,11 +666,22 @@ function parseProducts(rows){
 }
 
 function loadFile(file,mode){
+  console.log('loadFile called, mode:', mode, 'file:', file.name);
+  document.getElementById('file-status').innerHTML='<div class="alert alert-info">⏳ Läser fil...</div>';
   const reader=new FileReader();
+  reader.onerror=e=>{
+    console.error('FileReader error:', e);
+    document.getElementById('file-status').innerHTML='<div class="alert alert-err">❌ Kunde inte läsa filen: '+e+'</div>';
+  };
   reader.onload=async e=>{
+    try{
+    console.log('FileReader onload, result length:', e.target.result.length);
     const wb=XLSX.read(e.target.result,{type:'binary'});
+    console.log('Workbook loaded, sheets:', wb.SheetNames);
     const raw=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+    console.log('Raw rows:', raw.length);
     const parsed=parseProducts(raw);
+    console.log('Parsed products:', parsed.length);
 
     if(mode==='12m'){
       // First file — set as base
@@ -729,6 +740,10 @@ function loadFile(file,mode){
       // Update merge section styling
       const dz2=document.getElementById('drop-zone-2');
       if(dz2){dz2.style.background='#f0fdf8';dz2.style.borderColor='#1D9E75';}
+    }
+    }catch(err){
+      console.error('loadFile error:', err);
+      document.getElementById('file-status').innerHTML='<div class="alert alert-err">❌ Fel: '+err.message+'</div>';
     }
   };
   reader.readAsBinaryString(file);
