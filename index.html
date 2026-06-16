@@ -667,7 +667,7 @@ function parseProducts(rows){
 
 function loadFile(file,mode){
   console.log('loadFile called, mode:', mode, 'file:', file.name);
-  document.getElementById('file-status').innerHTML='<div class="alert alert-info">⏳ Läser fil...</div>';
+  const fsEl0=document.getElementById('file-status'); if(fsEl0)fsEl0.innerHTML='<div class="alert alert-info">⏳ Läser fil: '+file.name+'...</div>';
   const reader=new FileReader();
   reader.onerror=e=>{
     console.error('FileReader error:', e);
@@ -682,6 +682,7 @@ function loadFile(file,mode){
     console.log('Raw rows:', raw.length);
     const parsed=parseProducts(raw);
     console.log('Parsed products:', parsed.length);
+    console.log('About to check mode:', mode);
 
     if(mode==='12m'){
       // First file — set as base
@@ -693,13 +694,17 @@ function loadFile(file,mode){
       poList=poList.filter(p=>activePOs.has(normPN(p.po)));
       const cleaned=before-poList.length;
       savePOs();
+      console.log('savePOs called OK');
       let msg=`✅ ${file.name} inläst — ${products.length} produkter.`;
       if(cleaned>0)msg+=` ${cleaned} levererad${cleaned>1?'e':''} PO rensad${cleaned>1?'e':''}.`;
-      msg+=` Ladda nu upp 3-månadersfilen nedan för komplett PO-information.`;
-      document.getElementById('file-status').innerHTML=`<div class="alert alert-ok">${msg}</div>`;
+      msg+=` Ladda nu upp 3-månadersfilen nedan, eller klicka "PO-register" för att fortsätta.`;
+      console.log('About to update DOM');
+      const fsEl=document.getElementById('file-status');
+      console.log('fsEl found:', !!fsEl);
+      if(fsEl)fsEl.innerHTML=`<div class="alert alert-ok">${msg}</div>`;
       // Show 3m upload section and continue button
       const ms=document.getElementById('merge-section');
-      if(ms){ms.style.display='block';init3mHandlers();}
+      if(ms){ms.style.display='block';setTimeout(init3mHandlers,50);}
       const cb=document.getElementById('v0-continue');
       if(cb)cb.style.display='block';
 
@@ -742,8 +747,11 @@ function loadFile(file,mode){
       if(dz2){dz2.style.background='#f0fdf8';dz2.style.borderColor='#1D9E75';}
     }
     }catch(err){
-      console.error('loadFile error:', err);
-      document.getElementById('file-status').innerHTML='<div class="alert alert-err">❌ Fel: '+err.message+'</div>';
+      console.error('loadFile error:', err, err.stack);
+      console.log('About to update DOM');
+      const fsEl=document.getElementById('file-status');
+      console.log('fsEl found:', !!fsEl);
+      if(fsEl)fsEl.innerHTML='<div class="alert alert-err">❌ Fel vid filläsning: '+err.message+' (rad '+err.lineNumber+')</div>';
     }
   };
   reader.readAsBinaryString(file);
