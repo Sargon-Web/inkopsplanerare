@@ -667,11 +667,14 @@ function parseProducts(rows){
 
 function loadFile(file,mode){
   console.log('loadFile called, mode:', mode, 'file:', file.name);
-  const fsEl0=document.getElementById('file-status'); if(fsEl0)fsEl0.innerHTML='<div class="alert alert-info">⏳ Läser fil: '+file.name+'...</div>';
+  // Use correct status element based on mode
+  const statusId=mode==='12m'?'file-status':'merge-status';
+  const fsEl0=document.getElementById(statusId);
+  if(fsEl0)fsEl0.innerHTML='<div class="alert alert-info">⏳ Läser '+file.name+'...</div>';
   const reader=new FileReader();
   reader.onerror=e=>{
     console.error('FileReader error:', e);
-    document.getElementById('file-status').innerHTML='<div class="alert alert-err">❌ Kunde inte läsa filen: '+e+'</div>';
+    const errEl=document.getElementById(mode==='12m'?'file-status':'merge-status'); if(errEl)errEl.innerHTML='<div class="alert alert-err">❌ Kunde inte läsa filen: '+e+'</div>';
   };
   reader.onload=async e=>{
     try{
