@@ -1195,7 +1195,9 @@ function removeReviewRow(i){if(removedRows.has(i))removedRows.delete(i);else rem
 
 // ── Confirm ──────────────────────────────────────────────────────
 function renderConfirm(){
+  console.log('renderConfirm called, proposals:', proposals.length, 'savedFilter:', JSON.stringify(savedFilter));
   const act=getFilteredRows();
+  console.log('renderConfirm filtered rows:', act.length, 'bat total:', act.reduce((s,p)=>s+p.uBat,0));
   const bat=act.filter(p=>p.otype.includes('bat')),air=act.filter(p=>p.otype.includes('air')),fly=act.filter(p=>p.otype==='fly');
   document.getElementById('confirm-summary').innerHTML=`
     <div class="sum-card" style="border-color:#9FE1CB"><div style="font-size:11px;color:#0F6E56;text-transform:uppercase;font-weight:600">Båt-order</div><div style="font-size:28px;font-weight:500;color:#0F6E56;margin:8px 0 4px">${bat.reduce((s,p)=>s+p.uBat,0)}</div><div style="font-size:11px;color:#888">${bat.length} produkter</div></div>
@@ -1324,6 +1326,7 @@ function showGlobalStatus(msg,cls){
 let savedFilter={fBat:true,fAir:true,fFly:false,ffGen:true,ff3c:true,ffOth:false,fkA:true,fkB:true,fkCp:true,fkC:true,fWarn:false,fCrit:false,sr:''};
 
 function saveFilterState(){
+  console.log('saveFilterState called');
   try{
     savedFilter={
       fBat:document.getElementById('f-bat').checked,
