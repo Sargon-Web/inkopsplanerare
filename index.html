@@ -613,6 +613,58 @@ function init3mHandlers(){
   }
 }
 
+function parseProducts(rows){
+  let hdr=-1;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i].map(c=>String(c).toLowerCase().trim());
+    if(r.some(c=>c.includes('art'))&&r.some(c=>c==='1m'||c.includes('1å')||c.includes('1a'))){hdr=i;break;}
+  }
+  if(hdr<0){alert('Kunde inte hitta kolumnrubriker. Kontrollera att rätt fil är vald.');return[];}
+  const H=rows[hdr].map(c=>String(c).toLowerCase().trim());
+  const ix=n=>H.findIndex(h=>h.includes(n));
+  const iA=ix('art'),iP=ix('produkt'),iL=H.findIndex(h=>h.startsWith('lev')),
+        iT=ix('til'),iI=ix('ila'),iG=H.findIndex(h=>h==='grä'||h==='gra'||h.startsWith('gr')),
+        i1m=H.findIndex(h=>h==='1m'),i3m=H.findIndex(h=>h==='3m'),
+        i1a=H.findIndex(h=>h==='1å'||h==='1a'||h.includes('\u00e5')||h==='1\u00e3\u00a5'),
+        iE=H.findIndex(h=>h.includes('enhet'));
+  const out=[];
+  for(let i=hdr+1;i<rows.length;i++){
+    const r=rows[i];
+    if(!r||r.every(c=>c===''||c===null||c===undefined))continue;
+    const aRaw=String(r[iA]||'').trim(),pRaw=String(r[iP]||'').trim();
+    // PO row comes AFTER product row
+    if(!aRaw&&pRaw.toLowerCase().includes('inköpsorder')){
+      const m=pRaw.match(/#(\w+)[\s\S]*?(\d+)\s*antal/i);
+      if(m&&out.length>0){
+        out[out.length-1].filePOs.push({po:m[1],qty:parseInt(m[2])});
+      }
+      continue;
+    }
+    if(!aRaw||isNaN(parseInt(aRaw)))continue;
+    const til=parseFloat(r[iT])||0,ila=parseFloat(r[iI])||0,gra=parseFloat(r[iG])||0;
+    const m1=parseFloat(r[i1m])||0,m3=parseFloat(r[i3m])||0,y1=parseFloat(r[i1a])||0;
+    const enhet=parseFloat(r[iE])||0,lev=String(r[iL]||'').trim();
+    const ll=lev.toLowerCase(),pl=pRaw.toLowerCase();
+    const isAcc=pl.includes('armband')||pl.includes('armklocka')||ll.includes('armband')||
+      pl.includes('skal')||pl.includes('tpu')||pl.includes('sportarmband')||
+      pl.includes('loop')||pl.includes('milanese')||pl.includes('nylon')||
+      pl.includes('ocean wave')||pl.includes('alpine');
+    let fam='other';
+    if(!isAcc){
+      if(ll.includes('genuine leather')||pl.includes('genuine leather')||
+         (pl.toLowerCase().includes('\u00e4kta l\u00e4der')&&(pl.includes('fodral')||pl.includes('pl\u00e5nbok')))||
+         (ll.includes('\u00e4kta l\u00e4der')&&(ll.includes('fodral')||ll.includes('case'))))
+        fam='genuine';
+      else if(ll.includes('3 card')||ll.includes('crazy horse')||
+              pl.includes('crazy horse')||pl.includes('3 card'))
+        fam='3card';
+    }
+    out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,
+              lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[]});
+  }
+  return out;
+}
+
 function loadFile(file,mode){
   const reader=new FileReader();
   reader.onload=async e=>{
@@ -629,7 +681,7 @@ function loadFile(file,mode){
       const before=poList.length;
       poList=poList.filter(p=>activePOs.has(normPN(p.po)));
       const cleaned=before-poList.length;
-      await savePOs();
+      savePOs();
       let msg=`✅ ${file.name} inläst — ${products.length} produkter.`;
       if(cleaned>0)msg+=` ${cleaned} levererad${cleaned>1?'e':''} PO rensad${cleaned>1?'e':''}.`;
       msg+=` Ladda nu upp 3-månadersfilen nedan för komplett PO-information.`;
