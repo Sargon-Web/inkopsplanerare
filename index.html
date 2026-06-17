@@ -385,8 +385,8 @@ tr.removed td{opacity:.35}
     <div class="filter-sep"></div>
     <label>Familj:</label>
     <div class="cb-group">
-      <label class="cb-item"><input type="checkbox" id="ff-gen" checked onchange="renderTable()"> Genuine</label>
-      <label class="cb-item"><input type="checkbox" id="ff-3c" checked onchange="renderTable()"> 3 Card</label>
+      <label class="cb-item"><input type="checkbox" id="ff-gen" onchange="renderTable()"> Genuine</label>
+      <label class="cb-item"><input type="checkbox" id="ff-3c" onchange="renderTable()"> 3 Card</label>
       <label class="cb-item"><input type="checkbox" id="ff-oth" onchange="renderTable()"> Övriga</label>
     </div>
     <div class="filter-sep"></div>
@@ -404,7 +404,10 @@ tr.removed td{opacity:.35}
     <input type="text" id="f-search" class="filter-search" placeholder="Sök art.nr eller namn..." oninput="renderTable()">
     <span style="margin-left:auto;font-size:11px;color:#888" id="row-count"></span>
   </div>
-  <p style="font-size:11px;color:#888;margin-bottom:6px">Klicka kolumnrubrik för att sortera. Grön rad = i aktiv PO. Gul rad = varning som kräver granskning.</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+  <p style="font-size:11px;color:#888">Klicka kolumnrubrik för att sortera. Grön rad = i aktiv PO. Gul rad = varning.</p>
+  <p style="font-size:11px;color:#888" id="last-run-info"></p>
+</div>
   <div class="table-wrap">
     <table>
       <thead>
@@ -421,9 +424,11 @@ tr.removed td{opacity:.35}
           <th style="width:30px" onclick="sortBy('y1')">1år</th>
           <th style="width:58px" onclick="sortBy('trend')">Trend</th>
           <th style="width:50px" onclick="sortBy('klass')">Klass <span id="sort-klass"></span></th>
-          <th style="width:90px" onclick="sortBy('daysLeft')" title="Dagar tills lagret tar slut — inkl. ila och inkommande PO">Dagar kvar <span id="sort-daysLeft">↑</span></th>
+          <th style="width:85px" onclick="sortBy('daysLeft')" title="Dagar tills lagret tar slut inkl. ila och PO">Dagar kvar <span id="sort-daysLeft">↑</span></th>
+          <th style="width:65px" onclick="sortBy('coverAfter')" title="Täckning i månader efter container">Efter cont. <span id="sort-coverAfter"></span></th>
           <th style="width:75px">Typ</th>
           <th style="width:50px" onclick="sortBy('suggestQty')">Förslag</th>
+          <th style="width:45px" onclick="sortBy('lastDiff')" title="Skillnad mot förra körningen">Δ Förra <span id="sort-lastDiff"></span></th>
           <th style="width:85px">Din order</th>
           <th style="width:55px"></th>
         </tr>
@@ -433,7 +438,7 @@ tr.removed td{opacity:.35}
   </div>
   <div style="display:flex;gap:8px;margin-top:1.25rem;align-items:center">
     <button class="btn" onclick="goTo(2)">← Inställningar</button>
-    <button class="btn btn-primary" onclick="goTo(4)">✅ Gå till bekräftelse</button>
+    <button class="btn btn-primary" onclick="goToConfirmWithCheck()">✅ Gå till bekräftelse</button>
     <span style="font-size:12px;color:#888;margin-left:10px" id="rev-sum"></span>
   </div>
 </div>
@@ -1076,10 +1081,18 @@ function runCalc(){
     // firstStockout=-1 means stock lasts until container — show daysToContainer+
     const daysLeftSim = sim.firstStockout >= 0 ? sim.firstStockout : daysToContainer + 30;
 
+    // Coverage after container = bat order / monthly demand
+    const coverAfter = demandMonthly>0 ? Math.round((batQ/demandMonthly)*10)/10 : 0;
+
+    // Compare to last run
+    const lastRunData=getLastRun();
+    const lastPrev=lastRunData[p.artNr];
+    const lastDiff=lastPrev?batQ-lastPrev.bat:0;
+
     proposals.push({
       ...p, trend, klass, demandMonthly,
       batQ, airQ, otype,
-      uBat:batQ, uAir:airQ,
+      uBat:batQ, uAir:airQ, coverAfter, lastDiff,
       poAir:deliveries.filter(d=>d.day<=cfg.airLead).reduce((s,d)=>s+d.qty,0),
       poBat:deliveries.filter(d=>d.day<=daysToContainer).reduce((s,d)=>s+d.qty,0),
       poBatTotal,
@@ -1093,6 +1106,64 @@ function runCalc(){
   }
   proposals.forEach(p=>{p.warns=getWarnings(p);});
   goTo(3);
+}
+
+
+// ── Feature 1: Family check before confirm ──────────────────────
+function goToConfirmWithCheck(){
+  const ffGen=document.getElementById('ff-gen').checked;
+  const ff3c=document.getElementById('ff-3c').checked;
+  const ffOth=document.getElementById('ff-oth').checked;
+  if(!ffGen&&!ff3c&&!ffOth){
+    showGlobalStatus('⚠️ Välj minst en produktfamilj (Genuine, 3 Card eller Övriga) innan du fortsätter.','alert-warn');
+    // Highlight family filter
+    const filterBar=document.getElementById('ff-gen').closest('.filter-bar');
+    if(filterBar){filterBar.style.border='2px solid #FAC775';setTimeout(()=>filterBar.style.border='',3000);}
+    return;
+  }
+  // Show what will be exported
+  const filtered=getFilteredRows();
+  const famNames=[];
+  if(ffGen)famNames.push('Genuine Leather');
+  if(ff3c)famNames.push('3 Card PU');
+  if(ffOth)famNames.push('Övriga');
+  const bat=filtered.reduce((s,p)=>s+p.uBat,0);
+  const air=filtered.reduce((s,p)=>s+p.uAir,0);
+  showGlobalStatus(`✅ Fortsätter med: ${famNames.join(' + ')} | ${filtered.length} produkter | ${bat} bat + ${air} flyg`,'alert-ok');
+  saveFilterState();
+  goTo(4);
+}
+
+// ── Feature 5: Compare to last run ──────────────────────────────
+function saveLastRun(rows){
+  const snapshot={};
+  rows.forEach(p=>{snapshot[p.artNr]={bat:p.uBat,air:p.uAir};});
+  saveToStorage('inkop-last-run',snapshot);
+  saveToStorage('inkop-last-run-date',new Date().toLocaleDateString('sv-SE'));
+}
+
+function getLastRun(){
+  return loadFromStorage('inkop-last-run')||{};
+}
+
+function getLastRunDate(){
+  return loadFromStorage('inkop-last-run-date')||'';
+}
+
+function compareToLastRun(p){
+  const last=getLastRun();
+  const prev=last[p.artNr];
+  if(!prev)return null;
+  const batDiff=p.uBat-prev.bat;
+  const airDiff=p.uAir-prev.air;
+  if(batDiff===0&&airDiff===0)return null;
+  return{batDiff,airDiff,prevBat:prev.bat,prevAir:prev.air};
+}
+
+// ── Feature 7: Coverage after container ─────────────────────────
+function calcCoverageMonths(p,daily){
+  if(daily<=0)return null;
+  return p.uBat/daily/30;
 }
 
 // ── Table ────────────────────────────────────────────────────────
@@ -1178,9 +1249,11 @@ function renderTable(){
       <td style="text-align:right">${p.y1}</td>
       <td class="${tc}" style="font-size:11px">${tl}</td>
       <td style="text-align:center"><span style="font-size:11px;font-weight:700;color:${klassColor(p.klass)}">${klassLabel(p.klass)}</span></td>
-      <td><div class="days-cell"><div class="days-dot ${dlDot}"></div><span class="${dlCls}" title="Dagar tills lagret tar slut — inkl. ila och inkommande PO">${dl==='—'?'—':dl+' d'}</span></div></td>
+      <td><div class="days-cell"><div class="days-dot ${dlDot}"></div><span class="${dlCls}" title="Dagar tills lagret tar slut inkl. ila och PO">${dl==='—'?'—':dl+' d'}</span></div></td>
+      <td style="text-align:center;font-size:11px">${p.coverAfter>0?`<span style="font-weight:600;color:${p.coverAfter>=6?'#0F6E56':p.coverAfter>=4?'#854F0B':'#A32D2D'}" title="Täckning efter container anländer">${p.coverAfter.toFixed(1)}m</span>`:'<span style="color:#aaa">—</span>'}</td>
       <td>${badges}</td>
       <td style="text-align:right;font-size:11px;color:#888">${fs}</td>
+      <td style="text-align:center;font-size:11px">${p.lastDiff===0&&!getLastRun()[p.artNr]?'<span style="color:#ccc">—</span>':p.lastDiff>0?`<span style="color:#854F0B;font-weight:600" title="Ökat med ${p.lastDiff} sedan förra körningen">+${p.lastDiff}</span>`:p.lastDiff<0?`<span style="color:#185FA5;font-weight:600" title="Minskat med ${Math.abs(p.lastDiff)} sedan förra körningen">${p.lastDiff}</span>`:'<span style="color:#888">0</span>'}</td>
       <td>${t==='bat+air'?
         `<input type="number" class="qi" value="${p.uBat}" step="5" title="Båt" onchange="updQ(${i},'bat',this.value)"> <input type="number" class="qi" value="${p.uAir}" step="5" title="Flyg" onchange="updQ(${i},'air',this.value)">`:
         `<input type="number" class="qi" value="${t==='fly'?p.uFly:p.uBat}" step="5" onchange="updQ(${i},'${t==='fly'?'fly':'bat'}',this.value)">`}
@@ -1191,6 +1264,9 @@ function renderTable(){
 
   document.getElementById('tbody').innerHTML=html||'<tr><td colspan="16" style="text-align:center;padding:2.5rem;color:#888">Inga rader matchar — justera filtren ovan</td></tr>';
   document.getElementById('row-count').textContent=`${rows.length} rader visas`;
+  const lrd=getLastRunDate();
+  const lrEl=document.getElementById('last-run-info');
+  if(lrEl)lrEl.textContent=lrd?`Δ Förra körningen: ${lrd}`:'Δ Förra körningen: ingen sparad';
   document.getElementById('rev-sum').textContent=`${proposals.filter((_,i)=>!removedRows.has(i)).length} aktiva rader`;
   renderMetrics();
 }
@@ -1294,6 +1370,8 @@ function getFilteredRows(){
 function doExport(type){
   const act=getFilteredRows();
   if(act.length===0){alert('Inga rader att exportera. Gå tillbaka och beräkna ett orderförslag.');return;}
+  // Save this run for future comparison
+  saveLastRun(act);
   const po=type==='test'?'TEST-'+todayStr:(gv('exp-po')||'');
   const eta=type==='test'?'':gv('exp-eta');
   const inlev=type==='test'?'':gv('exp-inlev');
@@ -1329,7 +1407,7 @@ function showGlobalStatus(msg,cls){
 
 // ── Navigation ───────────────────────────────────────────────────
 // Store active filter state globally so confirm/export uses same filter
-let savedFilter={fBat:true,fAir:true,fFly:false,ffGen:true,ff3c:true,ffOth:false,fkA:true,fkB:true,fkCp:true,fkC:true,fWarn:false,fCrit:false,sr:''};
+let savedFilter={fBat:true,fAir:true,fFly:false,ffGen:false,ff3c:false,ffOth:false,fkA:true,fkB:true,fkCp:true,fkC:true,fWarn:false,fCrit:false,sr:''};
 
 function saveFilterState(){
   console.log('saveFilterState called');
