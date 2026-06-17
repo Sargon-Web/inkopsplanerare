@@ -18,7 +18,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .sup-btn.soon{opacity:.4;cursor:default}
 .steps{display:flex;gap:0;margin-bottom:1.5rem;overflow-x:auto;background:#fff;border-radius:10px;padding:6px;border:1px solid #e5e5e2}
 .step{display:flex;align-items:center;gap:6px;font-size:12px;color:#888;padding:6px 12px;border-radius:8px;white-space:nowrap;cursor:default}
-.step.done{color:#0F6E56}
+.step.done{color:#0F6E56;cursor:pointer}.step.done:hover{background:#f0fdf8;border-radius:8px}
 .step.active{color:#1a1a1a;font-weight:500;background:#f1efe8}
 .sep{padding:6px 2px;color:#ccc;font-size:12px}
 .card{background:#fff;border:1px solid #e5e5e2;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
@@ -165,17 +165,17 @@ tr.removed td{opacity:.35}
 
 <!-- STEG-INDIKATORER -->
 <div class="steps" id="steps-bar">
-  <div class="step active" id="st0">📤 1. Importera</div>
+  <div class="step active" id="st0" onclick="if(this.classList.contains('done'))goTo(0)" style="cursor:default">📤 1. Importera</div>
   <div class="sep">›</div>
-  <div class="step" id="st1">📋 2. PO-register</div>
+  <div class="step" id="st1" onclick="if(this.classList.contains('done'))goTo(1)" style="cursor:default">📋 2. PO-register</div>
   <div class="sep">›</div>
-  <div class="step" id="st2">⚙️ 3. Inställningar</div>
+  <div class="step" id="st2" onclick="if(this.classList.contains('done'))goTo(2)" style="cursor:default">⚙️ 3. Inställningar</div>
   <div class="sep">›</div>
-  <div class="step" id="st3">🔍 4. Granska</div>
+  <div class="step" id="st3" onclick="if(this.classList.contains('done'))goTo(3)" style="cursor:default">🔍 4. Granska</div>
   <div class="sep">›</div>
-  <div class="step" id="st4">✅ 5. Bekräfta</div>
+  <div class="step" id="st4" onclick="if(this.classList.contains('done'))goTo(4)" style="cursor:default">✅ 5. Bekräfta</div>
   <div class="sep">›</div>
-  <div class="step" id="st5">📄 6. Exportera</div>
+  <div class="step" id="st5" onclick="if(this.classList.contains('done'))goTo(5)" style="cursor:default">📄 6. Exportera</div>
 </div>
 
 <div id="global-status" style="margin-bottom:.75rem"></div>
@@ -486,8 +486,10 @@ tr.removed td{opacity:.35}
     <div id="preview-sharp" style="margin-top:1.25rem"></div>
   </div>
 
-  <div style="margin-top:1.25rem">
+  <div style="margin-top:1.25rem;display:flex;gap:10px;flex-wrap:wrap">
     <button class="btn" onclick="goTo(4)">← Tillbaka till bekräftelse</button>
+    <button class="btn" onclick="goTo(3)">🔍 Tillbaka till granskning</button>
+    <button class="btn btn-primary" onclick="startNewCalc()">🔄 Ny beräkning (ny familj)</button>
   </div>
 </div>
 
@@ -1348,6 +1350,27 @@ function saveFilterState(){
       sr:document.getElementById('f-search').value.toLowerCase()
     };
   }catch(e){}
+}
+
+function startNewCalc(){
+  // Reset to step 1 but keep PO register and settings
+  proposals=[];
+  removedRows=new Set();
+  // Reset file status
+  const fs=document.getElementById('file-status');
+  if(fs)fs.innerHTML='';
+  const ms=document.getElementById('merge-status');
+  if(ms)ms.innerHTML='';
+  const mergeSection=document.getElementById('merge-section');
+  if(mergeSection)mergeSection.style.display='none';
+  const cont=document.getElementById('v0-continue');
+  if(cont)cont.style.display='none';
+  // Reset file inputs
+  const fi=document.getElementById('fi');
+  if(fi)fi.value='';
+  const fi2=document.getElementById('fi2');
+  if(fi2)fi2.value='';
+  goTo(0);
 }
 
 function goTo(n){
