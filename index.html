@@ -1021,6 +1021,10 @@ function runCalc(){
 
     // Simulate stock through to container day
     const sim=simulateStock(p.lager, p.ila, deliveries, daily, daysToContainer);
+    // Debug key products
+    if([7381,7540,16772,21239,210768].includes(p.artNr)){
+      console.log('DEBUG art',p.artNr,'lager:',p.lager,'ila:',p.ila,'deliveries:',JSON.stringify(deliveries),'daily:',daily.toFixed(3),'daysToContainer:',daysToContainer,'sim:',JSON.stringify(sim),'klass:',klass,'cover:',coverMonths);
+    }
 
     // Days left (stock only, without PO)
     const daysLeft=calcDaysLeftStock(p.lager,daily);
