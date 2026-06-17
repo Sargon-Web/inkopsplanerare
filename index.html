@@ -1431,23 +1431,62 @@ function saveFilterState(){
 }
 
 function startNewCalc(){
-  // Reset to step 1 but keep PO register and settings
+  // Full reset — as if starting from scratch
+  products=[];
   proposals=[];
   removedRows=new Set();
-  // Reset file status
-  const fs=document.getElementById('file-status');
-  if(fs)fs.innerHTML='';
+
+  // Reset family filters to unchecked
+  ['ff-gen','ff-3c','ff-oth'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.checked=false;
+  });
+
+  // Reset order type filters to default
+  const fBat=document.getElementById('f-bat'); if(fBat)fBat.checked=true;
+  const fAir=document.getElementById('f-air'); if(fAir)fAir.checked=true;
+  const fFly=document.getElementById('f-fly'); if(fFly)fFly.checked=false;
+
+  // Reset klass filters to all checked
+  ['fk-A','fk-B','fk-Cp','fk-C'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.checked=true;
+  });
+
+  // Reset extra filters
+  const fw=document.getElementById('f-warn-only'); if(fw)fw.checked=false;
+  const fc=document.getElementById('f-crit-only'); if(fc)fc.checked=false;
+  const fs2=document.getElementById('f-search'); if(fs2)fs2.value='';
+
+  // Reset savedFilter
+  savedFilter={fBat:true,fAir:true,fFly:false,ffGen:false,ff3c:false,ffOth:false,
+               fkA:true,fkB:true,fkCp:true,fkC:true,fWarn:false,fCrit:false,sr:''};
+
+  // Reset confirm checkbox
+  const cb=document.getElementById('confirm-cb');
+  if(cb)cb.checked=false;
+  updateConfirmBtn();
+
+  // Reset file status messages
+  const fsEl=document.getElementById('file-status');
+  if(fsEl)fsEl.innerHTML='';
   const ms=document.getElementById('merge-status');
   if(ms)ms.innerHTML='';
+  const globalSt=document.getElementById('global-status');
+  if(globalSt)globalSt.innerHTML='';
+
+  // Hide merge section and continue button
   const mergeSection=document.getElementById('merge-section');
   if(mergeSection)mergeSection.style.display='none';
   const cont=document.getElementById('v0-continue');
   if(cont)cont.style.display='none';
-  // Reset file inputs
+
+  // Reset file inputs so browser doesn't remember last file
   const fi=document.getElementById('fi');
   if(fi)fi.value='';
   const fi2=document.getElementById('fi2');
   if(fi2)fi2.value='';
+
   goTo(0);
 }
 
