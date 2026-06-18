@@ -506,6 +506,69 @@ const todayStr = TODAY.toISOString().split('T')[0];
 let products=[], proposals=[], removedRows=new Set(), poList=[];
 let openTip=null, selected=new Set(), sortCol='daysLeft', sortDir=1, orderMode='bat';
 
+// ── Supplier config ──────────────────────────────────────────────
+// Each supplier defines its own classification, coverage and demand
+// rules so the calc engine stays supplier-agnostic. Cheng values are
+// the original hardcoded ones — switching suppliers swaps the ruleset.
+const SUPPLIERS={
+  cheng:{
+    label:'Cheng — Båt + Flyg',
+    enabled:true,
+    countIla:false,            // long lead time → ila not counted as available
+    modes:['bat','fly'],        // båt+flyg-brygga, endast flyg
+    leadDefaults:{sea:155,air:52,fly:21,cont:120},
+    // year-sales thresholds → class
+    classThresholds:{A:30,B:15,Cp:6,C:2},
+    // emerging fallback (low yearly, recent activity)
+    emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
+    coverMonths:{A:{up:7,down:6,stable:7},B:6,Cp:{down:3,stable:4},C:0,D:0},
+    demandWeights:{m1:0.5,m3:0.3,y1:0.2},
+    safetyNet:{enabled:true,klass:'C',stockMax:2,qty:5}, // C: flyg 5 st om lager≤2
+    minYearForBat:15
+  },
+  shalin_cont:{
+    label:'Shalin — Container',
+    enabled:false,
+    countIla:true,             // EU/Shalin: ila räknas som tillgängligt
+    modes:['bat'],
+    leadDefaults:{sea:120,air:0,fly:0,cont:100},
+    classThresholds:{A:30,B:15,Cp:6,C:2},
+    emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
+    coverMonths:{A:{up:7,down:6,stable:7},B:6,Cp:{down:3,stable:4},C:0,D:0},
+    demandWeights:{m1:0.5,m3:0.3,y1:0.2},
+    safetyNet:{enabled:false},
+    minYearForBat:15
+  },
+  shalin_fly:{
+    label:'Shalin — Flyg',
+    enabled:false,
+    countIla:true,
+    modes:['fly'],
+    leadDefaults:{sea:0,air:25,fly:25,cont:0},
+    classThresholds:{A:30,B:15,Cp:6,C:2},
+    emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
+    coverMonths:{A:{up:4,down:3,stable:4},B:3,Cp:{down:2,stable:2},C:0,D:0},
+    demandWeights:{m1:0.5,m3:0.3,y1:0.2},
+    safetyNet:{enabled:false},
+    minYearForBat:6
+  },
+  eu:{
+    label:'EU — leverantörer',
+    enabled:false,
+    countIla:true,
+    modes:['fly'],
+    leadDefaults:{sea:0,air:14,fly:14,cont:0},
+    classThresholds:{A:30,B:15,Cp:6,C:2},
+    emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
+    coverMonths:{A:{up:3,down:2,stable:3},B:2,Cp:{down:1,stable:2},C:0,D:0},
+    demandWeights:{m1:0.5,m3:0.3,y1:0.2},
+    safetyNet:{enabled:false},
+    minYearForBat:6
+  }
+};
+let activeSup='cheng';
+function S(){return SUPPLIERS[activeSup]||SUPPLIERS.cheng;}
+
 // ── Onboarding ───────────────────────────────────────────────────
 const OB=[
   {icon:'📦',title:'Välkommen till Inköpsplaneraren',text:'Systemet hjälper dig räkna ut rätt inköpsmängder baserat på försäljningsdata, lager och inkommande orders. Vi börjar med Cheng.',ex:'Välj leverantör uppe till höger. Fler leverantörer läggs till successivt.'},
@@ -534,8 +597,25 @@ function renderOb(){
 
 // ── Sup selector ─────────────────────────────────────────────────
 function selectSup(key,btn){
+  if(!SUPPLIERS[key]||!SUPPLIERS[key].enabled)return;
+  activeSup=key;
   document.querySelectorAll('.sup-btn:not(.soon)').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+  if(btn)btn.classList.add('active');
+  const lbl=document.getElementById('sup-label');
+  if(lbl)lbl.textContent=S().label;
+  applySupDefaults();
+  saveToStorage('inkop-active-sup',activeSup);
+}
+
+// Apply this supplier's lead-time defaults to the settings inputs
+// (only fills blanks / when switching — does not clobber a saved cfg
+// that already matches the active supplier)
+function applySupDefaults(){
+  const d=S().leadDefaults;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+  set('s-sea',d.sea);set('s-air',d.air);set('s-fly',d.fly);
+  // mode: fall back to supplier's first allowed mode
+  if(!S().modes.includes(orderMode))setMode(S().modes[0]);
 }
 
 // ── Mode ─────────────────────────────────────────────────────────
@@ -883,7 +963,7 @@ function hasActivePO(filePOs){
 // Simulate stock day by day — returns detailed timeline
 // Returns: { stockoutDay, airGap, stockAtContainer, poDeliveries }
 function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay){
-  let stock = startStock; // lager=Til only (already accounts for reservations). ilaQty param kept for compatibility but not used.
+  let stock = startStock + (ilaQty||0); // ila added when supplier counts it (0 for Cheng)
   let airGap = 0;
   let stockAtContainer = 0;
   let firstStockout = -1;
@@ -922,34 +1002,35 @@ function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay)
   };
 }
 
-// Classify product A/B/C+/C/D
+// Classify product A/B/C+/C/D (uses active supplier thresholds)
 function classify(p){
   const y=p.y1, m3avg=p.m3/3, m1=p.m1;
-  if(y>=30) return 'A';
-  if(y>=15) return 'B';
-  if(y>=6)  return 'Cp';
-  if(y>=2)  return 'C';
+  const t=S().classThresholds, e=S().emerging;
+  if(y>=t.A) return 'A';
+  if(y>=t.B) return 'B';
+  if(y>=t.Cp)  return 'Cp';
+  if(y>=t.C)  return 'C';
   // New/emerging product — check recent months
-  if(m1>=5||m3avg>=3) return 'B';
-  if(m1>=2||m3avg>=1.5) return 'Cp';
+  if(m1>=e.bM1||m3avg>=e.bM3avg) return 'B';
+  if(m1>=e.cpM1||m3avg>=e.cpM3avg) return 'Cp';
   return 'D';
 }
 
-// Cover months per class and trend
+// Cover months per class and trend (uses active supplier config)
 function getCoverMonths(klass,trend){
-  if(klass==='A')  return trend==='up'?7:trend==='down'?6:7;
-  if(klass==='B')  return 6;
-  if(klass==='Cp') return trend==='down'?3:4;
-  return 0;
+  const c=S().coverMonths[klass];
+  if(c===undefined) return 0;
+  if(typeof c==='number') return c;
+  return c[trend]!==undefined?c[trend]:(c.stable||0);
 }
 
-// Weighted daily demand
+// Weighted daily demand (uses active supplier weights)
 function getDemand(p,trend){
-  const a3=p.m3/3, a12=p.y1/12;
-  const w=0.5*p.m1+0.3*a3+0.2*a12;
-  if(trend==='up')  return Math.max(w,p.m1,a3);
-  if(trend==='down') return Math.min(w,a3);
-  return w;
+  const a3=p.m3/3, a12=p.y1/12, w=S().demandWeights;
+  const weighted=w.m1*p.m1+w.m3*a3+w.y1*a12;
+  if(trend==='up')  return Math.max(weighted,p.m1,a3);
+  if(trend==='down') return Math.min(weighted,a3);
+  return weighted;
 }
 
 function getTrend(p,cfg){
@@ -1027,7 +1108,8 @@ function runCalc(){
     const poBatTotal=deliveries.reduce((s,d)=>s+d.qty,0);
 
     // Simulate stock through to container day
-    const sim=simulateStock(p.lager, p.ila, deliveries, daily, daysToContainer);
+    // ila counted as available only when supplier config allows
+    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer);
     // Debug key products
     if([7381,7540,16772,21239,210768].includes(p.artNr)){
       console.log('DEBUG art',p.artNr,'lager:',p.lager,'ila:',p.ila,'deliveries:',JSON.stringify(deliveries),'daily:',daily.toFixed(3),'daysToContainer:',daysToContainer,'sim:',JSON.stringify(sim),'klass:',klass,'cover:',coverMonths);
@@ -1042,8 +1124,11 @@ function runCalc(){
 
     // ── C: safety-net only ────────────────────────────────────
     if(klass==='C'){
-      if(p.lager+poBatTotal<=2&&daily>0){  // Cheng: ila not counted (long lead time)
-        airQ=5;
+      const sn=S().safetyNet;
+      // available stock: ila counted only if supplier config says so
+      const avail=p.lager+(S().countIla?p.ila:0)+poBatTotal;
+      if(sn.enabled&&sn.klass==='C'&&avail<=sn.stockMax&&daily>0){
+        airQ=sn.qty;
         otype='air';
       } else continue;
     } else {
@@ -1515,6 +1600,15 @@ function goTo(n){
 
 // ── Init ─────────────────────────────────────────────────────────
 function init(){
+  // restore last active supplier (only if still enabled)
+  const savedSup=loadFromStorage('inkop-active-sup');
+  if(savedSup&&SUPPLIERS[savedSup]&&SUPPLIERS[savedSup].enabled){
+    activeSup=savedSup;
+    const lbl=document.getElementById('sup-label');if(lbl)lbl.textContent=S().label;
+    document.querySelectorAll('.sup-btn:not(.soon)').forEach(b=>{
+      b.classList.toggle('active',b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+savedSup+"'"));
+    });
+  }
   loadPOs();loadCfg();renderPOTable();calcContDate();
   if(!loadFromStorage('inkop-seen')){startOnboard();saveToStorage('inkop-seen',true);}
 }
