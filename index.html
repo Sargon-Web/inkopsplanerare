@@ -526,6 +526,8 @@ const SUPPLIERS={
     coverMonths:{A:{up:7,down:6,stable:7},B:6,Cp:{down:3,stable:4},C:0,D:0},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     safetyNet:{enabled:true,klass:'C',stockMax:2,qty:5}, // C: flyg 5 st om lager≤2
+    airBridgeMinMonths:1, // flyg-brygga bara om gapet ≥ N månaders försäljning
+    airBridgeMinUnits:5,  // …och minst N st (sub-5 hål inte värt en flygorder; matchar rnd5-minimum)
     minYearForBat:15
   },
   shalin_cont:{
@@ -984,33 +986,27 @@ function hasActivePO(filePOs){
   return filePOs.some(fp=>poList.some(pl=>normPOMatch(pl.po,fp.po)&&pl.sellable));
 }
 
-// Simulate stock day by day — returns detailed timeline
-// Returns: { stockoutDay, airGap, stockAtContainer, poDeliveries }
-function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay){
+// Simulate stock day by day — returns detailed timeline.
+// airGap = the single largest shortfall the stock reaches BETWEEN the day
+// a newly-ordered flight could arrive (airLeadDay) and the boat. Earlier
+// gaps are ignored: a flight ordered today lands in ~52 days, so it cannot
+// bridge a hole that closes before then (e.g. an air PO already inbound).
+// If incoming POs keep stock >= 0 through that window, airGap = 0.
+function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay, airLeadDay){
   let stock = startStock + (ilaQty||0); // ila added when supplier counts it (0 for Cheng)
-  let airGap = 0;
   let stockAtContainer = 0;
   let firstStockout = -1;
-
-  // Add ila as immediate delivery on day 0 if not already in deliveries
-  // (ila is already added to startStock above)
+  let maxDeficit = 0; // deepest the running balance goes negative in the bridgeable window
+  const bridgeFrom = airLeadDay!=null ? airLeadDay : 0;
 
   for(let day=0; day<=containerDay+1; day++){
-    // Check if any PO delivers today
-    deliveries.forEach(d=>{
-      if(d.day===day) stock+=d.qty;
-    });
+    deliveries.forEach(d=>{ if(d.day===day) stock+=d.qty; });
+    stock -= dailySales;
 
-    // Sell today's demand
-    const sold=dailySales;
-    if(stock>0){
-      stock=Math.max(0,stock-sold);
-    } else {
-      // Stock is zero — accumulate air gap
-      if(day<containerDay){
-        airGap+=sold;
-        if(firstStockout<0) firstStockout=day;
-      }
+    if(day<containerDay){
+      if(stock<0 && firstStockout<0) firstStockout=day;
+      // only a deficit a new flight could actually fill counts toward airGap
+      if(day>=bridgeFrom && stock<0 && -stock>maxDeficit) maxDeficit=-stock;
     }
 
     if(day===containerDay){
@@ -1020,7 +1016,7 @@ function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay)
 
   return {
     stockoutDay: firstStockout,
-    airGap: Math.ceil(airGap),
+    airGap: Math.ceil(maxDeficit),
     stockAtContainer: Math.max(0,stockAtContainer),
     firstStockout
   };
@@ -1180,7 +1176,8 @@ function runCalc(){
 
     // Simulate stock through to container day
     // ila counted as available only when supplier config allows
-    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer);
+    // airLead passed so air bridge ignores gaps that close before a new flight could land
+    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer, cfg.airLead);
     // Debug key products
     if([7381,7540,16772,21239,210768].includes(p.artNr)){
       console.log('DEBUG art',p.artNr,'lager:',p.lager,'ila:',p.ila,'deliveries:',JSON.stringify(deliveries),'daily:',daily.toFixed(3),'daysToContainer:',daysToContainer,'sim:',JSON.stringify(sim),'klass:',klass,'cover:',coverMonths);
@@ -1206,15 +1203,16 @@ function runCalc(){
       // ── A, B, C+: full calculation ───────────────────────────
 
       // AIR BRIDGE
-      // Triggered if stock runs out at any point before container arrives
-      if(sim.airGap>0){
-        const rawAir=sim.airGap;
-        if(klass==='Cp'){
-          // C+ gets flagged for review with suggestion
-          airQ=rnd5(rawAir);
-        } else {
-          airQ=rnd5(rawAir);
-        }
+      // sim.airGap = real shortfall in the bridgeable window (after a new
+      // flight could land, before the boat), counting everything already
+      // incoming. Two gates so slow sellers don't get pointless flights:
+      //   1) gap >= airBridgeMinMonths of normal sales, AND
+      //   2) gap >= a minimum unit floor (a sub-3-unit hole isn't worth a flight)
+      const airMinMonths=S().airBridgeMinMonths!=null?S().airBridgeMinMonths:1;
+      const airUnitFloor=S().airBridgeMinUnits!=null?S().airBridgeMinUnits:3;
+      const airThreshold=demandMonthly*airMinMonths;
+      if(sim.airGap>=airThreshold && sim.airGap>=airUnitFloor){
+        airQ=rnd5(sim.airGap);
       }
 
       // BAT ORDER
