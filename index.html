@@ -1116,12 +1116,28 @@ function resyncPODates(){
   savePOs();
 }
 
+// Which product families are currently selected in the filter.
+// Defaults to all true if the checkboxes aren't in the DOM yet.
+function selectedFamilies(){
+  const g=document.getElementById('ff-gen'), c=document.getElementById('ff-3c'), o=document.getElementById('ff-oth');
+  const sel={genuine:g?g.checked:true, '3card':c?c.checked:true, other:o?o.checked:true};
+  // if nothing is ticked, treat as "all" so the warning still works pre-filter
+  if(!sel.genuine&&!sel['3card']&&!sel.other) return {genuine:true,'3card':true,other:true};
+  return sel;
+}
+
 // PO numbers referenced by products but with no creditable date.
+// Only counts POs linked to products in the SELECTED families, so
+// unrelated categories (reflexvästar, kryddställ…) don't trigger it.
 function getUndatedLinkedPOs(){
-  const linked={}; // po -> total qty across products
-  products.forEach(p=>(p.filePOs||[]).forEach(fp=>{
-    linked[normPN(fp.po)]=(linked[normPN(fp.po)]||0)+fp.qty;
-  }));
+  const fam=selectedFamilies();
+  const linked={}; // po -> total qty across in-scope products
+  products.forEach(p=>{
+    if(!fam[p.family])return; // skip products outside selected families
+    (p.filePOs||[]).forEach(fp=>{
+      linked[normPN(fp.po)]=(linked[normPN(fp.po)]||0)+fp.qty;
+    });
+  });
   const bad=[];
   Object.keys(linked).forEach(n=>{
     const po=poList.find(pl=>normPN(pl.po)===n);
@@ -1435,6 +1451,7 @@ function renderTable(){
   if(lrEl)lrEl.textContent=lrd?`Δ Förra körningen: ${lrd}`:'Δ Förra körningen: ingen sparad';
   document.getElementById('rev-sum').textContent=`${proposals.filter((_,i)=>!removedRows.has(i)).length} aktiva rader`;
   renderMetrics();
+  renderPODateWarning();
 }
 
 function updQ(i,t,val){const q=Math.max(0,parseInt(val)||0);if(t==='bat')proposals[i].uBat=q;else if(t==='air')proposals[i].uAir=q;else proposals[i].uFly=q;}
