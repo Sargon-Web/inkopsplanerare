@@ -232,6 +232,7 @@ tr.removed td{opacity:.35}
       ℹ️ <div><strong>PO-registret</strong> — fyll i ETA och dagar till hylla. Systemet räknar ut "Säljbar från" automatiskt och krediterar PO:n mot beräkningarna från det datumet.<br><br>Klicka "Auto-hämta" för att hämta PO-nummer från den uppladdade filen. Bocka in flera och använd "Applicera på markerade" för att sätta samma datum på en gång.<br><br><strong>Tips:</strong> Välj alltid datum via kalendern för att undvika felformat.</div>
     </div>
     <div id="po-alert" class="alert" style="display:none">ℹ️ <span id="po-alert-text"></span></div>
+    <div id="po-undated-summary"></div>
 
     <div class="bulk-bar">
       <input type="checkbox" id="sel-all" onchange="toggleSelAll(this.checked)">
@@ -374,6 +375,7 @@ tr.removed td{opacity:.35}
 
 <!-- V3: GRANSKA -->
 <div id="v3" style="display:none">
+  <div id="po-date-warning"></div>
   <div class="metric-row" id="metrics"></div>
   <div class="filter-bar">
     <label>Ordertyp:</label>
@@ -931,6 +933,22 @@ function renderPOTable(){
       <td><button class="btn btn-danger btn-sm" onclick="removePO(${i})">🗑</button></td>
     </tr>`;
   }).join('');
+  renderPOUndatedSummary();
+}
+
+// Live summary in step 2: which linked POs still lack a date.
+function renderPOUndatedSummary(){
+  const el=document.getElementById('po-undated-summary');
+  if(!el)return;
+  // only meaningful once products are loaded
+  if(!products||products.length===0){el.innerHTML='';return;}
+  const bad=getUndatedLinkedPOs();
+  if(bad.length===0){
+    el.innerHTML=`<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#166534">✓ Alla inkommande order kopplade till produkter har datum och kommer krediteras.</div>`;
+    return;
+  }
+  const items=bad.map(b=>`#${b.po} (${b.qty} st)`).join(', ');
+  el.innerHTML=`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#B91C1C"><b>⚠️ ${bad.length} order utan datum:</b> ${items} — fyll i ETA nedan, annars dubbelbeställs dessa produkter.</div>`;
 }
 
 // ── Calculation ──────────────────────────────────────────────────
@@ -947,8 +965,14 @@ function getPODeliveries(filePOs){
   const deliveries=[];
   filePOs.forEach(fp=>{
     const po=poList.find(pl=>normPOMatch(pl.po,fp.po));
-    if(po&&po.sellable&&isValidDate(po.sellable)){
-      const sellDate=new Date(po.sellable);
+    if(!po)return;
+    // defensive: derive sellable from eta if missing (onchange-miss safety)
+    let sellable=po.sellable;
+    if((!sellable||!isValidDate(sellable))&&po.eta&&isValidDate(po.eta)){
+      sellable=calcSellable(po.eta,po.inlev);
+    }
+    if(sellable&&isValidDate(sellable)){
+      const sellDate=new Date(sellable);
       const day=Math.max(0,Math.round((sellDate-today)/864e5));
       deliveries.push({day,qty:fp.qty,po:fp.po});
     }
@@ -1077,7 +1101,38 @@ function getWarnings(p){
   return w;
 }
 
+// Re-sync every PO's sellable date from its saved eta+inlev.
+// Guarantees the calc sees what the user typed even if a date field's
+// onchange never fired. Does NOT touch eta — only recomputes sellable.
+// Returns list of POs that are linked to products but still lack a date.
+function resyncPODates(){
+  poList.forEach(po=>{
+    if(po.eta&&isValidDate(po.eta)){
+      po.sellable=calcSellable(po.eta,po.inlev);
+    } else {
+      po.sellable=''; // no valid eta -> cannot credit
+    }
+  });
+  savePOs();
+}
+
+// PO numbers referenced by products but with no creditable date.
+function getUndatedLinkedPOs(){
+  const linked={}; // po -> total qty across products
+  products.forEach(p=>(p.filePOs||[]).forEach(fp=>{
+    linked[normPN(fp.po)]=(linked[normPN(fp.po)]||0)+fp.qty;
+  }));
+  const bad=[];
+  Object.keys(linked).forEach(n=>{
+    const po=poList.find(pl=>normPN(pl.po)===n);
+    const dated=po&&po.sellable&&isValidDate(po.sellable);
+    if(!dated) bad.push({po:po?po.po:n, qty:linked[n], inRegister:!!po});
+  });
+  return bad.sort((a,b)=>b.qty-a.qty);
+}
+
 function runCalc(){
+  resyncPODates(); // ← ensure saved ETAs are reflected before calculating
   const cfg={
     contDate:gv('s-cont'),
     seaLead:parseInt(gv('s-sea'))||134,
@@ -1190,7 +1245,33 @@ function runCalc(){
     });
   }
   proposals.forEach(p=>{p.warns=getWarnings(p);});
+  renderPODateWarning();
   goTo(3);
+}
+
+// Banner shown in Granska when linked POs lack a creditable date.
+// These POs are NOT counted as incoming stock → risk of double-ordering.
+function renderPODateWarning(){
+  const el=document.getElementById('po-date-warning');
+  if(!el)return;
+  const bad=getUndatedLinkedPOs();
+  if(bad.length===0){el.innerHTML='';return;}
+  const rows=bad.map(b=>{
+    const tag=b.inRegister?'saknar ETA':'saknas i PO-registret';
+    return `<li style="margin:2px 0"><b>#${b.po}</b> — ${b.qty} st på väg, <span style="color:#B91C1C">${tag}</span></li>`;
+  }).join('');
+  el.innerHTML=`
+    <div style="background:#FEF2F2;border:2px solid #FCA5A5;border-radius:12px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-weight:700;color:#B91C1C;font-size:14px;margin-bottom:6px">
+        ⚠️ ${bad.length} inkommande order${bad.length>1?'er':''} räknas INTE med
+      </div>
+      <div style="font-size:12px;color:#7F1D1D;margin-bottom:8px">
+        Dessa PO:er saknar säljbart datum och krediteras därför inte i förslaget —
+        produkter kopplade till dem kan få <b>dubbelbeställning</b>. Lägg till ETA i steg 2 och beräkna om.
+      </div>
+      <ul style="margin:0 0 10px 18px;padding:0;font-size:12px;color:#7F1D1D">${rows}</ul>
+      <button class="btn btn-sm" style="background:#B91C1C;color:#fff" onclick="goTo(1)">← Till PO-registret (steg 2)</button>
+    </div>`;
 }
 
 
