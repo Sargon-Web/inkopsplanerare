@@ -355,13 +355,13 @@ tr.removed td{opacity:.35}
           </div>
           <div style="padding:8px;background:#FAEEDA;border-radius:6px;border:1px solid #FAC775">
             <div style="font-weight:700;color:#854F0B">Klass C+</div>
-            <div style="color:#854F0B;font-size:11px">6–14 st/år</div>
-            <div style="margin-top:4px;font-size:11px">4 mån täckning<br>Flyg-brygga: granska</div>
+            <div style="color:#854F0B;font-size:11px">10–14 st/år</div>
+            <div style="margin-top:4px;font-size:11px">4 mån täckning<br>Flyg-brygga + båt</div>
           </div>
           <div style="padding:8px;background:#f5f5f3;border-radius:6px;border:1px solid #e5e5e2">
             <div style="font-weight:700;color:#888">Klass C / D</div>
-            <div style="color:#888;font-size:11px">C: 2–5 st/år · D: &lt;2</div>
-            <div style="margin-top:4px;font-size:11px">C: safety-net flyg<br>D: köps ej</div>
+            <div style="color:#888;font-size:11px">C: 2–9 st/år · D: &lt;2</div>
+            <div style="margin-top:4px;font-size:11px">C: flyg 5 st om tom<br>D: köps ej</div>
           </div>
         </div>
       </div>
@@ -519,13 +519,16 @@ const SUPPLIERS={
     countIla:false,            // long lead time → ila not counted as available
     modes:['bat','fly'],        // båt+flyg-brygga, endast flyg
     leadDefaults:{sea:155,air:52,fly:21,cont:120},
-    // year-sales thresholds → class
-    classThresholds:{A:30,B:15,Cp:6,C:2},
+    // year-sales thresholds → class. Cp (C+) = 10–14 (flyg+båt),
+    // C = 2–9 (flyg only, no boat), D = <2 (inget)
+    classThresholds:{A:30,B:15,Cp:10,C:2},
     // emerging fallback (low yearly, recent activity)
     emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
     coverMonths:{A:{up:7,down:6,stable:7},B:6,Cp:{down:3,stable:4},C:0,D:0},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     safetyNet:{enabled:true,klass:'C',stockMax:2,qty:5}, // C: flyg 5 st om lager≤2
+    cStockMax:2,          // C (2–9/år): "tom/nästan tom" = lager+inkommande ≤ N
+    cAirQty:5,            // C: flyg-batch när tom (ingen båt)
     airBridgeMinMonths:1, // flyg-brygga bara om gapet ≥ N månaders försäljning
     airBridgeMinUnits:5,  // …och minst N st (sub-5 hål inte värt en flygorder; matchar rnd5-minimum)
     minYearForBat:15
@@ -1190,13 +1193,17 @@ function runCalc(){
 
     let batQ=0,airQ=0,otype='none';
 
-    // ── C: safety-net only ────────────────────────────────────
+    // ── C (2–9/år): flyg only, defensive ──────────────────────
+    // C is low-priority ("inte super viktig om något tar slut"). Buy
+    // nothing while stock + incoming still covers it; if it's empty or
+    // nearly empty, fly a single minimum batch (cAirQty). Never a boat.
     if(klass==='C'){
-      const sn=S().safetyNet;
-      // available stock: ila counted only if supplier config says so
-      const avail=p.lager+(S().countIla?p.ila:0)+poBatTotal;
-      if(sn.enabled&&sn.klass==='C'&&avail<=sn.stockMax&&daily>0){
-        airQ=sn.qty;
+      if(daily<=0){ continue; }
+      const onHand=p.lager+(S().countIla?p.ila:0)+poBatTotal;
+      const cMax=S().cStockMax!=null?S().cStockMax:2;   // "empty/near-empty" threshold
+      const cQty=S().cAirQty!=null?S().cAirQty:5;       // minimum flyg batch
+      if(onHand<=cMax){
+        airQ=cQty;
         otype='air';
       } else continue;
     } else {
