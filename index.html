@@ -667,7 +667,7 @@ function parseProducts(rows){
         fam='3card';
     }
     out.push({artNr:parseInt(aRaw),produkt:pRaw,levArt:lev,family:fam,
-              lager:til+gra,ila,m1,m3,y1,enhet,filePOs:[]});
+              lager:til,ila,m1,m3,y1,enhet,filePOs:[]});  // lager=Til only, Grä=varningsflagg
   }
   return out;
 }
@@ -883,7 +883,7 @@ function hasActivePO(filePOs){
 // Simulate stock day by day — returns detailed timeline
 // Returns: { stockoutDay, airGap, stockAtContainer, poDeliveries }
 function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay){
-  let stock = startStock + ilaQty; // ila counts as available now (already in transit, arrives soon)
+  let stock = startStock; // lager=Til only (already accounts for reservations). ilaQty param kept for compatibility but not used.
   let airGap = 0;
   let stockAtContainer = 0;
   let firstStockout = -1;
@@ -972,7 +972,7 @@ function calcDaysLeftTotal(p,daily,airLead){
   getPODeliveries(p.filePOs).forEach(d=>{
     if(d.day<=airLead) poNear+=d.qty;
   });
-  return Math.round((p.lager+p.ila+poNear)/daily);
+  return Math.round((p.lager+poNear)/daily);
 }
 
 function rnd5(n){
@@ -1042,7 +1042,7 @@ function runCalc(){
 
     // ── C: safety-net only ────────────────────────────────────
     if(klass==='C'){
-      if(p.lager+p.ila+poBatTotal<=2&&daily>0){
+      if(p.lager+poBatTotal<=2&&daily>0){  // Cheng: ila not counted (long lead time)
         airQ=5;
         otype='air';
       } else continue;
