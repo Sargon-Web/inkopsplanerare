@@ -535,16 +535,23 @@ const SUPPLIERS={
   },
   shalin_cont:{
     label:'Shalin — Container',
-    enabled:false,
-    countIla:true,             // EU/Shalin: ila räknas som tillgängligt
-    modes:['bat'],
-    leadDefaults:{sea:120,air:0,fly:0,cont:100},
-    classThresholds:{A:30,B:15,Cp:6,C:2},
+    enabled:true,
+    countIla:true,             // Shalin/EU: ila räknas som tillgängligt lager
+    modes:['bat','fly'],        // container + flygbrygga (fyller tills container)
+    leadDefaults:{sea:120,air:52,fly:52,cont:120},
+    classThresholds:{A:30,B:15,Cp:10,C:2},
     emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
-    coverMonths:{A:{up:7,down:6,stable:7},B:6,Cp:{down:3,stable:4},C:0,D:0},
+    // A & B = 7 mån fast täckning (containrar går oregelbundet/glest,
+    // 7 mån buffrar även längsta glappet; ingen trendjustering behövs)
+    coverMonths:{A:{up:7,down:7,stable:7},B:7,Cp:{down:0,stable:0},C:0,D:0},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     safetyNet:{enabled:false},
-    minYearForBat:15
+    // Container-grind: bara produkter som sålt minYearForContainer+/år
+    // får en container-order. Allt därunder hanteras av Shalin Vecka.
+    minYearForContainer:25,     // justerbar (kan sänkas till t.ex. 20)
+    airBridgeMinMonths:1,
+    airBridgeMinUnits:5,
+    minYearForBat:25
   },
   shalin_fly:{
     label:'Shalin — Flyg',
@@ -621,6 +628,9 @@ function applySupDefaults(){
   const d=S().leadDefaults;
   const set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
   set('s-sea',d.sea);set('s-air',d.air);set('s-fly',d.fly);
+  // min-year threshold: container gate for Shalin, else boat threshold
+  const minY=S().minYearForContainer!=null?S().minYearForContainer:S().minYearForBat;
+  set('s-miny',minY);
   // mode: fall back to supplier's first allowed mode
   if(!S().modes.includes(orderMode))setMode(S().modes[0]);
 }
@@ -1158,6 +1168,7 @@ function runCalc(){
     airLead:parseInt(gv('s-air'))||55,
     tup:parseFloat(gv('s-tup'))||0.9,
     tdn:parseFloat(gv('s-tdn'))||0.7,
+    minYear:parseInt(gv('s-miny'))||0,  // "Minsta årsförsäljning" — container/båt-grind
   };
   const today=new Date();
   const contMs=cfg.contDate?new Date(cfg.contDate):new Date(today.getTime()+134*864e5);
@@ -1177,6 +1188,16 @@ function runCalc(){
     // Skip D completely
     if(klass==='D')continue;
 
+    // Container threshold gate (Shalin Container): only products selling
+    // minYearForContainer+/year qualify for a container order. Everything
+    // below is handled by the weekly flow, so skip it here entirely.
+    // The live settings field (s-miny) overrides the config default so the
+    // user can adjust the threshold (e.g. drop 25→20 if order value is low).
+    if(S().minYearForContainer!=null){
+      const thr=cfg.minYear||S().minYearForContainer;
+      if(p.y1 < thr) continue;
+    }
+
     // Get PO deliveries timeline
     const deliveries=getPODeliveries(p.filePOs);
     const poBatTotal=deliveries.reduce((s,d)=>s+d.qty,0);
@@ -1185,10 +1206,6 @@ function runCalc(){
     // ila counted as available only when supplier config allows
     // airLead passed so air bridge ignores gaps that close before a new flight could land
     const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer, cfg.airLead);
-    // Debug key products
-    if([7381,7540,16772,21239,210768].includes(p.artNr)){
-      console.log('DEBUG art',p.artNr,'lager:',p.lager,'ila:',p.ila,'deliveries:',JSON.stringify(deliveries),'daily:',daily.toFixed(3),'daysToContainer:',daysToContainer,'sim:',JSON.stringify(sim),'klass:',klass,'cover:',coverMonths);
-    }
 
     // Days left (stock only, without PO)
     const daysLeft=calcDaysLeftStock(p.lager,daily);
