@@ -1116,20 +1116,24 @@ function resyncPODates(){
 }
 
 // Which product families are currently selected in the filter.
-// Defaults to all true if the checkboxes aren't in the DOM yet.
-function selectedFamilies(){
+// strict=false (default): empty filter → treat as all (legacy callers).
+// strict=true: empty filter → none, so the PO warning stays empty until
+// the user actually picks a family (matches the empty-by-default filter).
+function selectedFamilies(strict){
   const g=document.getElementById('ff-gen'), c=document.getElementById('ff-3c'), o=document.getElementById('ff-oth');
-  const sel={genuine:g?g.checked:true, '3card':c?c.checked:true, other:o?o.checked:true};
-  // if nothing is ticked, treat as "all" so the warning still works pre-filter
-  if(!sel.genuine&&!sel['3card']&&!sel.other) return {genuine:true,'3card':true,other:true};
+  const sel={genuine:g?g.checked:false, '3card':c?c.checked:false, other:o?o.checked:false};
+  if(!sel.genuine&&!sel['3card']&&!sel.other){
+    return strict ? sel : {genuine:true,'3card':true,other:true};
+  }
   return sel;
 }
 
 // PO numbers referenced by products but with no creditable date.
 // Only counts POs linked to products in the SELECTED families, so
 // unrelated categories (reflexvästar, kryddställ…) don't trigger it.
+// Uses strict family selection: no family picked → no warning.
 function getUndatedLinkedPOs(){
-  const fam=selectedFamilies();
+  const fam=selectedFamilies(true);
   const linked={}; // po -> total qty across in-scope products
   products.forEach(p=>{
     if(!fam[p.family])return; // skip products outside selected families
