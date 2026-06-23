@@ -196,19 +196,20 @@ tr.removed td{opacity:.35}
 
   <div id="merge-section" style="display:none">
     <div class="card" style="border-color:#9FE1CB">
-      <h3 style="font-size:14px;font-weight:500;margin-bottom:6px;color:#0F6E56">✅ Steg 2 — Lägg till 3-månadersfil (valfritt men rekommenderat)</h3>
-      <p style="font-size:12px;color:#666;margin-bottom:1rem">3-månadersfilen kompletterar med nya produkter och PO-information som kan saknas i 12-månadersfilen. Inga dubletter skapas — systemet mergar automatiskt.</p>
+      <h3 style="font-size:14px;font-weight:500;margin-bottom:6px;color:#0F6E56">✅ Steg 2 — Lägg till fler exportvyer (rekommenderat)</h3>
+      <p style="font-size:12px;color:#666;margin-bottom:1rem">Kodmyran kan timeouta och bara få ut en del av katalogen per export. Ladda upp så många vyer du behöver (3m, 1m, vecka …) — varje fil kompletterar med produkter och PO-info som saknas. Inga dubletter skapas; systemet mergar på artikelnummer.</p>
       <div class="upload-area" id="drop-zone-2" onclick="document.getElementById('fi2').click()" style="padding:1.5rem;border-style:solid;border-color:#9FE1CB">
         <div style="font-size:32px;margin-bottom:8px">📋</div>
-        <strong style="font-size:13px;display:block;margin-bottom:4px">Ladda upp 3-månadersfil</strong>
-        <p style="color:#888;font-size:12px">Klicka eller dra och släpp .xlsx här</p>
+        <strong style="font-size:13px;display:block;margin-bottom:4px">Ladda upp ytterligare exportfil</strong>
+        <p style="color:#888;font-size:12px">Klicka eller dra och släpp .xlsx här — upprepa för fler vyer</p>
       </div>
       <input type="file" id="fi2" accept=".xlsx" style="display:none">
       <div id="merge-status" style="margin-top:0.75rem"></div>
+      <div id="merge-files-list" style="margin-top:0.5rem;font-size:12px;color:#0F6E56"></div>
     </div>
   </div>
 
-  <div class="alert alert-info">ℹ️ Ladda alltid upp 12-månadersfilen först, sedan 3-månadersfilen. PO-registret sparas automatiskt och rensas från levererade orders vid nästa filimport.</div>
+  <div class="alert alert-info">ℹ️ Ladda alltid upp 12-månadersfilen först. Sedan kan du lägga till valfritt antal kortare vyer (3m, 1m, vecka). PO-registret sparas automatiskt och rensas från levererade orders vid nästa 12-månadersimport.</div>
   <div id="v0-continue" style="display:none;margin-top:1rem">
     <button class="btn btn-primary" onclick="goTo(1)">PO-register →</button>
     <span style="font-size:12px;color:#888;margin-left:10px">Du kan också hoppa över 3-månadersfilen och fortsätta direkt</span>
@@ -581,6 +582,7 @@ const SUPPLIERS={
   }
 };
 let activeSup='cheng';
+let mergedFiles=[]; // names of extra export views merged into the 12m base
 function S(){return SUPPLIERS[activeSup]||SUPPLIERS.cheng;}
 
 // ── Onboarding ───────────────────────────────────────────────────
@@ -705,16 +707,19 @@ dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.background='#f1ef
 dz.addEventListener('dragleave',()=>dz.style.background='');
 dz.addEventListener('drop',e=>{e.preventDefault();dz.style.background='';const f=e.dataTransfer.files[0];if(f)loadFile(f,'12m');});
 
-// 3M file handlers — init after DOM ready
+// 3M / extra-file handlers — init after DOM ready (attach once only)
+let _mergeHandlersInit=false;
 function init3mHandlers(){
+  if(_mergeHandlersInit)return;
   const fi2=document.getElementById('fi2');
   const dz2=document.getElementById('drop-zone-2');
-  if(fi2)fi2.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f,'3m');});
+  if(fi2){fi2.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f,'3m');});}
   if(dz2){
     dz2.addEventListener('dragover',e=>{e.preventDefault();dz2.style.background='#f0fdf8';});
     dz2.addEventListener('dragleave',()=>{dz2.style.background='';});
     dz2.addEventListener('drop',e=>{e.preventDefault();dz2.style.background='';const f=e.dataTransfer.files[0];if(f)loadFile(f,'3m');});
   }
+  if(fi2||dz2)_mergeHandlersInit=true;
 }
 
 function parseProducts(rows){
@@ -794,6 +799,7 @@ function loadFile(file,mode){
     if(mode==='12m'){
       // First file — set as base
       products=parsed;
+      mergedFiles=[]; // fresh base resets the merged-files tally
       // Clean PO list
       const activePOs=new Set();
       products.forEach(p=>p.filePOs.forEach(fp=>activePOs.add(normPN(fp.po))));
@@ -848,6 +854,21 @@ function loadFile(file,mode){
       if(addedPOs>0)msg+=` PO-info kompletterad för produkter (${addedPOs} PO-rader).`;
       if(addedProds===0&&addedPOs===0)msg+=` Ingen ny information att lägga till.`;
       if(statusEl)statusEl.innerHTML=`<div class="alert alert-ok">${msg}</div>`;
+
+      // Track this merged file and show running tally
+      mergedFiles.push({name:file.name,added:addedProds});
+      const listEl=document.getElementById('merge-files-list');
+      if(listEl){
+        const total=products.length;
+        const rows=mergedFiles.map((f,i)=>`<div>📄 ${f.name}${f.added>0?` (+${f.added} nya)`:''}</div>`).join('');
+        listEl.innerHTML=`<div style="margin-top:6px;padding:8px 10px;background:#f0fdf8;border-radius:8px">
+          <b>Inlästa tilläggsfiler (${mergedFiles.length}):</b>${rows}
+          <div style="margin-top:4px;color:#0F6E56"><b>Totalt ${total} produkter</b> efter merge.</div></div>`;
+      }
+
+      // Reset the file input so the SAME slot can be used again for more files
+      const fi2=document.getElementById('fi2');
+      if(fi2)fi2.value='';
 
       // Update merge section styling
       const dz2=document.getElementById('drop-zone-2');
