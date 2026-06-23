@@ -151,7 +151,7 @@ tr.removed td{opacity:.35}
   <h1>Inköpsplanerare</h1>
   <div class="sup-selector">
     <button class="sup-btn active" onclick="selectSup('cheng',this)">Cheng</button>
-    <button class="sup-btn soon" title="Kommer snart">Shalin Container</button>
+    <button class="sup-btn" onclick="selectSup('shalin_cont',this)">Shalin Container</button>
     <button class="sup-btn soon" title="Kommer snart">Shalin Flyg</button>
     <button class="sup-btn soon" title="Kommer snart">EU</button>
     <button class="sup-btn soon" title="Kommer snart">Sverige</button>
@@ -662,6 +662,20 @@ function loadFromStorage(key){try{const v=localStorage.getItem(key);return v?JSO
 
 function savePOs(){saveToStorage('inkop-po-list',poList);showSaved('po-saved-tag');}
 function loadPOs(){const v=loadFromStorage('inkop-po-list');if(v)poList=v;}
+
+// Prune the PO register to only POs referenced by the current product set.
+// Removes orphaned POs (e.g. Cheng containers left over when switching to
+// Shalin data). Saves and refreshes the table.
+function prunePOList(){
+  const activePOs=new Set();
+  products.forEach(p=>(p.filePOs||[]).forEach(fp=>activePOs.add(normPN(fp.po))));
+  const before=poList.length;
+  poList=poList.filter(p=>activePOs.has(normPN(p.po)));
+  const removed=before-poList.length;
+  savePOs();
+  if(typeof renderPOTable==='function')renderPOTable();
+  return removed;
+}
 function saveCfg(){
   const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
   saveToStorage('inkop-cfg',c);showSaved('cfg-saved-tag');
@@ -800,13 +814,8 @@ function loadFile(file,mode){
       // First file — set as base
       products=parsed;
       mergedFiles=[]; // fresh base resets the merged-files tally
-      // Clean PO list
-      const activePOs=new Set();
-      products.forEach(p=>p.filePOs.forEach(fp=>activePOs.add(normPN(fp.po))));
-      const before=poList.length;
-      poList=poList.filter(p=>activePOs.has(normPN(p.po)));
-      const cleaned=before-poList.length;
-      savePOs();
+      // Clean PO list — remove POs not referenced by this dataset
+      const cleaned=prunePOList();
       console.log('savePOs called OK');
       let msg=`✅ ${file.name} inläst — ${products.length} produkter.`;
       if(cleaned>0)msg+=` ${cleaned} levererad${cleaned>1?'e':''} PO rensad${cleaned>1?'e':''}.`;
@@ -847,6 +856,10 @@ function loadFile(file,mode){
           addedProds++;
         }
       }
+
+      // Prune PO register to only POs still referenced by current products
+      // (keeps the register clean when switching suppliers / datasets)
+      prunePOList();
 
       const statusEl=document.getElementById('merge-status');
       let msg=`✅ ${file.name} inläst.`;
