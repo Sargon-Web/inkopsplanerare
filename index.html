@@ -285,14 +285,13 @@ tr.removed td{opacity:.35}
     </div>
 
     <div style="margin-bottom:1.25rem">
-      <label style="font-size:11px;color:#666;display:block;margin-bottom:8px;font-weight:600">Orderläge för Cheng</label>
+      <label style="font-size:11px;color:#666;display:block;margin-bottom:8px;font-weight:600" id="mode-label">Orderläge för Cheng</label>
       <div class="mode-toggle">
         <button class="mode-btn active" id="mode-bat" onclick="setMode('bat')">🚢 Båt + Flyg-brygga</button>
         <button class="mode-btn" id="mode-fly" onclick="setMode('fly')">✈️ Endast flyg</button>
       </div>
       <p style="font-size:11px;color:#888;margin-top:6px" id="mode-desc">Standard för Genuine Leather och 3 Card PU. Systemet föreslår båtorder + flyg-brygga om lagret riskerar ta slut.</p>
     </div>
-
     <div class="date-calc">
       <div style="font-size:12px;font-weight:600;margin-bottom:10px;color:#185FA5">📅 Räkna ut nästa container-datum</div>
       <div class="date-calc-row">
@@ -323,11 +322,11 @@ tr.removed td{opacity:.35}
         <div id="t-air" class="tooltip"><strong>Flyg-ledtid Genuine/3 Card</strong><br>Korrekt ledtid: 35 prod + 10 flyg + 7 inlev = 52 dagar.<div class="ex">Tidigare system hade fel värde 28 dagar — nu är det rätt.</div></div>
       </div>
       <div class="fi">
-        <label>Flyg-ledtid övriga Cheng (dagar)</label>
+        <label id="fly-label">Flyg-ledtid övriga Cheng (dagar)</label>
         <input type="number" id="s-fly" value="21" min="10" max="45" onchange="saveCfg()">
       </div>
       <div class="fi" style="position:relative">
-        <label>Minsta årsförsäljning för båtorder <button class="help-btn" onclick="toggleTip('t-miny')">?</button></label>
+        <label><span id="miny-label">Minsta årsförsäljning för båtorder</span> <button class="help-btn" onclick="toggleTip('t-miny')">?</button></label>
         <input type="number" id="s-miny" value="15" min="5" max="100" onchange="saveCfg()">
         <div id="t-miny" class="tooltip"><strong>Minsta årsförsäljning</strong><br>Under denna gräns → ingen automatisk båtorder.<div class="ex">12/år → ingen båt. 18/år → båtorder föreslås.</div></div>
       </div>
@@ -343,7 +342,7 @@ tr.removed td{opacity:.35}
       </div>
       <div class="fi" style="grid-column:1/-1;background:#f5f5f3;border-radius:8px;padding:10px 14px;border:1px solid #e5e5e2">
         <label style="font-weight:600;color:#1a1a1a;margin-bottom:6px;display:block">Täckningsmål per klass (automatisk klassificering)</label>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:12px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:12px" id="class-cards">
           <div style="padding:8px;background:#E1F5EE;border-radius:6px;border:1px solid #9FE1CB">
             <div style="font-weight:700;color:#0F6E56">Klass A</div>
             <div style="color:#0F6E56;font-size:11px">≥ 30 st/år</div>
@@ -532,7 +531,19 @@ const SUPPLIERS={
     cAirQty:5,            // C: flyg-batch när tom (ingen båt)
     airBridgeMinMonths:1, // flyg-brygga bara om gapet ≥ N månaders försäljning
     airBridgeMinUnits:5,  // …och minst N st (sub-5 hål inte värt en flygorder; matchar rnd5-minimum)
-    minYearForBat:15
+    minYearForBat:15,
+    uiText:{
+      modeLabel:'Orderläge för Cheng',
+      modeDesc:'Standard för Genuine Leather och 3 Card PU. Systemet föreslår båtorder + flyg-brygga om lagret riskerar ta slut.',
+      flyLabel:'Flyg-ledtid övriga Cheng (dagar)',
+      minYearLabel:'Minsta årsförsäljning för båtorder',
+      cards:[
+        {t:'Klass A', r:'≥ 30 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
+        {t:'Klass B', r:'15–29 st/år', d:'6 mån täckning<br>Flyg-brygga: auto'},
+        {t:'Klass C+', r:'10–14 st/år', d:'4 mån täckning<br>Flyg-brygga + båt'},
+        {t:'Klass C / D', r:'C: 2–9 st/år · D: <2', d:'C: flyg 5 st om tom<br>D: köps ej'}
+      ]
+    }
   },
   shalin_cont:{
     label:'Shalin — Container',
@@ -552,7 +563,19 @@ const SUPPLIERS={
     minYearForContainer:25,     // justerbar (kan sänkas till t.ex. 20)
     airBridgeMinMonths:1,
     airBridgeMinUnits:5,
-    minYearForBat:25
+    minYearForBat:25,
+    uiText:{
+      modeLabel:'Orderläge för Shalin Container',
+      modeDesc:'Container 4–5 ggr/år. Bara produkter som sålt 25+/år köps via container, med flyg-brygga som fyller tills containern kommer.',
+      flyLabel:'Flyg-ledtid Shalin (dagar)',
+      minYearLabel:'Minsta årsförsäljning för container',
+      cards:[
+        {t:'Klass A', r:'≥ 30 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
+        {t:'Klass B', r:'25–29 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
+        {t:'Under 25/år', r:'< 25 st/år', d:'Ingen container<br>→ hanteras av Vecka'},
+        {t:'Lager (Til + Ila)', r:'Ila räknas med', d:'Inkommande räknas<br>som tillgängligt'}
+      ]
+    }
   },
   shalin_fly:{
     label:'Shalin — Flyg',
@@ -635,6 +658,35 @@ function applySupDefaults(){
   set('s-miny',minY);
   // mode: fall back to supplier's first allowed mode
   if(!S().modes.includes(orderMode))setMode(S().modes[0]);
+  renderSettingsUI();
+}
+
+// Populate the supplier-specific labels and class cards in step 3,
+// driven by the active supplier's uiText. Keeps the screen honest about
+// which supplier's rules are running.
+function renderSettingsUI(){
+  const t=S().uiText; if(!t)return;
+  const setText=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.textContent=v;};
+  setText('mode-label',t.modeLabel);
+  setText('mode-desc',t.modeDesc);
+  setText('fly-label',t.flyLabel);
+  setText('miny-label',t.minYearLabel);
+  const cardsEl=document.getElementById('class-cards');
+  if(cardsEl&&t.cards){
+    const palette=[
+      {bg:'#E1F5EE',bd:'#9FE1CB',fg:'#0F6E56'},
+      {bg:'#E6F1FB',bd:'#B5D4F4',fg:'#185FA5'},
+      {bg:'#FAEEDA',bd:'#FAC775',fg:'#854F0B'},
+      {bg:'#f5f5f3',bd:'#e5e5e2',fg:'#888'}
+    ];
+    cardsEl.innerHTML=t.cards.map((c,i)=>{
+      const p=palette[i]||palette[3];
+      return `<div style="padding:8px;background:${p.bg};border-radius:6px;border:1px solid ${p.bd}">
+        <div style="font-weight:700;color:${p.fg}">${c.t}</div>
+        <div style="color:${p.fg};font-size:11px">${c.r}</div>
+        <div style="margin-top:4px;font-size:11px">${c.d}</div></div>`;
+    }).join('');
+  }
 }
 
 // ── Mode ─────────────────────────────────────────────────────────
@@ -1767,7 +1819,7 @@ function init(){
       b.classList.toggle('active',b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+savedSup+"'"));
     });
   }
-  loadPOs();loadCfg();renderPOTable();calcContDate();
+  loadPOs();loadCfg();renderPOTable();calcContDate();renderSettingsUI();
   if(!loadFromStorage('inkop-seen')){startOnboard();saveToStorage('inkop-seen',true);}
 }
 init();
