@@ -1326,7 +1326,7 @@ function runCalc(){
       const airUnitFloor=S().airBridgeMinUnits!=null?S().airBridgeMinUnits:3;
       const airThreshold=demandMonthly*airMinMonths;
       if(sim.airGap>=airThreshold && sim.airGap>=airUnitFloor){
-        airQ=rnd5(sim.airGap);
+        airQ=rnd5(Math.round(sim.airGap));
       }
 
       // BAT ORDER
@@ -1334,7 +1334,8 @@ function runCalc(){
       // Projected stock at container = simulation result
       if(coverMonths>0){
         const targetStock=Math.ceil(demandMonthly*coverMonths);
-        const batNeed=targetStock-sim.stockAtContainer;
+        // round to whole units first — avoids float edge (30.0000001 → 40)
+        const batNeed=Math.round(targetStock-sim.stockAtContainer);
         if(batNeed>4) batQ=rnd5(batNeed);
       }
 
