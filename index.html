@@ -642,7 +642,9 @@ function selectSup(key,btn){
   if(btn)btn.classList.add('active');
   const lbl=document.getElementById('sup-label');
   if(lbl)lbl.textContent=S().label;
-  applySupDefaults();
+  // Load this supplier's saved settings (or its defaults if first time)
+  loadCfg();
+  renderSettingsUI();
   saveToStorage('inkop-active-sup',activeSup);
 }
 
@@ -728,13 +730,23 @@ function prunePOList(){
   if(typeof renderPOTable==='function')renderPOTable();
   return removed;
 }
+function cfgKey(){return 'inkop-cfg-'+activeSup;}
 function saveCfg(){
-  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
-  saveToStorage('inkop-cfg',c);showSaved('cfg-saved-tag');
+  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
+  saveToStorage(cfgKey(),c);showSaved('cfg-saved-tag');
 }
+// Load this supplier's saved settings. If none exist yet, apply the
+// supplier's config defaults so the threshold/leads are never stale
+// from another supplier (this is what prevented the 15-vs-25 bug).
 function loadCfg(){
-  const c=loadFromStorage('inkop-cfg');
-  if(c){['cont','sea','air','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined)el.value=c[k];});if(c.mode){orderMode=c.mode;setMode(c.mode);}}
+  const c=loadFromStorage(cfgKey());
+  if(c){
+    ['cont','sea','air','fly','miny','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined&&c[k]!=='')el.value=c[k];});
+    if(c.mode){orderMode=c.mode;setMode(c.mode);}
+  } else {
+    // No saved settings for this supplier yet → apply its defaults
+    applySupDefaults();
+  }
 }
 function showSaved(id){const el=document.getElementById(id);if(!el)return;el.style.display='inline-block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);}
 function gv(id){const el=document.getElementById(id);return el?el.value:'';}
