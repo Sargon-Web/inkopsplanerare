@@ -384,13 +384,15 @@ tr.removed td{opacity:.35}
       <label class="cb-item"><input type="checkbox" id="f-air" checked onchange="renderTable()"> <span class="badge ba">Flyg-brygga</span></label>
       <label class="cb-item"><input type="checkbox" id="f-fly" onchange="renderTable()"> <span class="badge bf">Övriga flyg</span></label>
     </div>
-    <div class="filter-sep"></div>
+    <div class="filter-sep" id="fam-sep"></div>
+    <span id="fam-filter-wrap">
     <label>Familj:</label>
     <div class="cb-group">
-      <label class="cb-item"><input type="checkbox" id="ff-gen" onchange="renderTable()"> Genuine</label>
-      <label class="cb-item"><input type="checkbox" id="ff-3c" onchange="renderTable()"> 3 Card</label>
-      <label class="cb-item"><input type="checkbox" id="ff-oth" onchange="renderTable()"> Övriga</label>
+      <label class="cb-item" id="ff-gen-wrap"><input type="checkbox" id="ff-gen" onchange="renderTable()"> <span id="ff-gen-lbl">Genuine</span></label>
+      <label class="cb-item" id="ff-3c-wrap"><input type="checkbox" id="ff-3c" onchange="renderTable()"> <span id="ff-3c-lbl">3 Card</span></label>
+      <label class="cb-item" id="ff-oth-wrap"><input type="checkbox" id="ff-oth" onchange="renderTable()"> <span id="ff-oth-lbl">Övriga</span></label>
     </div>
+    </span>
     <div class="filter-sep"></div>
     <div class="filter-sep"></div>
     <label>Klass:</label>
@@ -516,6 +518,8 @@ const SUPPLIERS={
   cheng:{
     label:'Cheng — Båt + Flyg',
     enabled:true,
+    familyDetector:'cheng',    // Genuine/3Card/Övriga detekteras vid import
+    families:[{id:'genuine',label:'Genuine'},{id:'3card',label:'3 Card'},{id:'other',label:'Övriga'}],
     countIla:false,            // long lead time → ila not counted as available
     modes:['bat','fly'],        // båt+flyg-brygga, endast flyg
     leadDefaults:{sea:155,air:52,fly:21,cont:120},
@@ -548,6 +552,8 @@ const SUPPLIERS={
   shalin_cont:{
     label:'Shalin — Container',
     enabled:true,
+    familyDetector:'shalin',   // Skydd (skal/fodral/skärmskydd) vs Tillbehör & Övrigt (gaming, väskor, laddare…)
+    families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
     countIla:false,            // Til = tillgängligt (i lager − reserverat). Ila = inkl. reservationer = SAMMA lager, inte extra → räkna inte (dubbelräkning)
     modes:['bat','fly'],        // container + flygbrygga (fyller tills container)
     leadDefaults:{sea:120,air:52,fly:52,cont:120},
@@ -644,6 +650,8 @@ function selectSup(key,btn){
   if(lbl)lbl.textContent=S().label;
   // Load this supplier's saved settings (or its defaults if first time)
   loadCfg();
+  // Family slots mean different things per supplier — clear on switch
+  ['ff-gen','ff-3c','ff-oth'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
   renderSettingsUI();
   saveToStorage('inkop-active-sup',activeSup);
 }
@@ -668,6 +676,8 @@ function applySupDefaults(){
 // which supplier's rules are running.
 function renderSettingsUI(){
   const t=S().uiText; if(!t)return;
+  // Family filter: labels and visibility follow the active supplier
+  renderFamilyFilter();
   const setText=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.textContent=v;};
   setText('mode-label',t.modeLabel);
   setText('mode-desc',t.modeDesc);
@@ -1227,13 +1237,66 @@ function resyncPODates(){
 // strict=false (default): empty filter → treat as all (legacy callers).
 // strict=true: empty filter → none, so the PO warning stays empty until
 // the user actually picks a family (matches the empty-by-default filter).
-function selectedFamilies(strict){
-  const g=document.getElementById('ff-gen'), c=document.getElementById('ff-3c'), o=document.getElementById('ff-oth');
-  const sel={genuine:g?g.checked:false, '3card':c?c.checked:false, other:o?o.checked:false};
-  if(!sel.genuine&&!sel['3card']&&!sel.other){
-    return strict ? sel : {genuine:true,'3card':true,other:true};
-  }
+// ── Supplier-driven families ─────────────────────────────────────
+// Each supplier defines its own families (S().families) and how a
+// product maps to one (S().familyDetector). The three filter slots
+// (ff-gen / ff-3c / ff-oth) are generic: slot N = families[N].
+
+// Shalin: Skydd (skal/fodral/skärmskydd) vs Tillbehör & Övrigt.
+// Ordlistan är avsiktligt samlad här — lätt att finjustera.
+function shalinFamily(p){
+  const t=((p.produkt||'')+' '+(p.levArt||'')).toLowerCase();
+  const skydd=['skal','fodral','plånbok','skydd','härdat','tempered','case','cover'];
+  return skydd.some(w=>t.includes(w))?'skydd':'ovrigt';
+}
+
+// Which family does product p belong to, for the ACTIVE supplier?
+function getFamily(p){
+  const det=S().familyDetector;
+  if(det==='shalin')return shalinFamily(p);
+  if(det==='cheng')return p.family||'other'; // import-time detection
+  return null; // supplier without families
+}
+
+// Map the three generic slot states to {familyId:bool}, or null if the
+// supplier has no families (→ no family filtering at all).
+function famSelFromSlots(s1,s2,s3){
+  const defs=S().families;
+  if(!Array.isArray(defs)||defs.length===0)return null;
+  const slots=[!!s1,!!s2,!!s3];
+  const sel={};defs.forEach((f,i)=>sel[f.id]=slots[i]);
   return sel;
+}
+
+// Live checkbox read. strict=true: nothing ticked → all false (show none).
+// strict=false: nothing ticked → treat as all (legacy callers).
+function selectedFamilies(strict){
+  const defs=S().families;
+  if(!Array.isArray(defs)||defs.length===0)return null;
+  const els=[document.getElementById('ff-gen'),document.getElementById('ff-3c'),document.getElementById('ff-oth')];
+  const sel=famSelFromSlots(els[0]&&els[0].checked,els[1]&&els[1].checked,els[2]&&els[2].checked);
+  const any=Object.values(sel).some(v=>v);
+  if(!any&&!strict)defs.forEach(f=>sel[f.id]=true);
+  return sel;
+}
+
+// Relabel the slots from the active supplier's families, hide unused
+// slots, and hide the whole filter if the supplier has no families.
+function renderFamilyFilter(){
+  const defs=S().families;
+  const wrap=document.getElementById('fam-filter-wrap');
+  const sep=document.getElementById('fam-sep');
+  const show=Array.isArray(defs)&&defs.length>0;
+  if(wrap)wrap.style.display=show?'':'none';
+  if(sep)sep.style.display=show?'':'none';
+  if(!show)return;
+  const slots=[['ff-gen-wrap','ff-gen-lbl'],['ff-3c-wrap','ff-3c-lbl'],['ff-oth-wrap','ff-oth-lbl']];
+  slots.forEach(([wId,lId],i)=>{
+    const w=document.getElementById(wId),l=document.getElementById(lId);
+    if(!w||!l)return;
+    if(defs[i]){w.style.display='';l.textContent=defs[i].label;}
+    else{w.style.display='none';const cb=w.querySelector('input');if(cb)cb.checked=false;}
+  });
 }
 
 // PO numbers referenced by products but with no creditable date.
@@ -1244,7 +1307,7 @@ function getUndatedLinkedPOs(){
   const fam=selectedFamilies(true);
   const linked={}; // po -> total qty across in-scope products
   products.forEach(p=>{
-    if(!fam[p.family])return; // skip products outside selected families
+    if(fam&&!fam[getFamily(p)])return; // skip products outside selected families
     (p.filePOs||[]).forEach(fp=>{
       linked[normPN(fp.po)]=(linked[normPN(fp.po)]||0)+fp.qty;
     });
@@ -1426,8 +1489,10 @@ function goToConfirmWithCheck(){
   const ffGen=document.getElementById('ff-gen').checked;
   const ff3c=document.getElementById('ff-3c').checked;
   const ffOth=document.getElementById('ff-oth').checked;
-  if(!ffGen&&!ff3c&&!ffOth){
-    showGlobalStatus('⚠️ Välj minst en produktfamilj (Genuine, 3 Card eller Övriga) innan du fortsätter.','alert-warn');
+  const famDefs=S().families;
+  if(Array.isArray(famDefs)&&famDefs.length>0&&!ffGen&&!ff3c&&!ffOth){
+    const names=famDefs.map(f=>f.label).join(', ');
+    showGlobalStatus(`⚠️ Välj minst en produktfamilj (${names}) innan du fortsätter.`,'alert-warn');
     // Highlight family filter
     const filterBar=document.getElementById('ff-gen').closest('.filter-bar');
     if(filterBar){filterBar.style.border='2px solid #FAC775';setTimeout(()=>filterBar.style.border='',3000);}
@@ -1436,9 +1501,11 @@ function goToConfirmWithCheck(){
   // Show what will be exported
   const filtered=getFilteredRows();
   const famNames=[];
-  if(ffGen)famNames.push('Genuine Leather');
-  if(ff3c)famNames.push('3 Card PU');
-  if(ffOth)famNames.push('Övriga');
+  if(!Array.isArray(famDefs)||famDefs.length===0){famNames.push(S().label);}
+  else{
+    const slots=[ffGen,ff3c,ffOth];
+    famDefs.forEach((f,i)=>{if(slots[i])famNames.push(f.label);});
+  }
   const bat=filtered.reduce((s,p)=>s+p.uBat,0);
   const air=filtered.reduce((s,p)=>s+p.uAir,0);
   showGlobalStatus(`✅ Fortsätter med: ${famNames.join(' + ')} | ${filtered.length} produkter | ${bat} bat + ${air} flyg`,'alert-ok');
@@ -1518,7 +1585,8 @@ function renderTable(){
     const t=p.otype;
     const typeOk=(fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly');
     if(!typeOk)return false;
-    const famOk=(ffGen&&p.family==='genuine')||(ff3c&&p.family==='3card')||(ffOth&&p.family==='other');
+    const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
+    const famOk=!selFam||!!selFam[getFamily(p)];
     if(!famOk)return false;
     // Klass filter
     const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&p.klass==='C');
@@ -1669,7 +1737,8 @@ function getFilteredRows(){
     const t=p.otype;
     const typeOk=(fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly');
     if(!typeOk)return false;
-    const famOk=(ffGen&&p.family==='genuine')||(ff3c&&p.family==='3card')||(ffOth&&p.family==='other');
+    const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
+    const famOk=!selFam||!!selFam[getFamily(p)];
     if(!famOk)return false;
     const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&p.klass==='C');
     if(!klassOk)return false;
@@ -1689,9 +1758,11 @@ function doExport(type){
   const eta=type==='test'?'':gv('exp-eta');
   const inlev=type==='test'?'':gv('exp-inlev');
   const next=type==='test'?'':gv('exp-next');
+  // Traceability: always record which settings this export was computed with
+  const meta=`Leverantör: ${S().label} | Container: ${gv('s-cont')||'—'} | Tröskel: ${gv('s-miny')||'—'}/år | Flyg-ledtid: ${gv('s-air')||'—'} d`;
   const lines=[
-    'PO-nummer;ETA;Dagar till hylla;Nästa container',
-    `${po};${eta};${inlev};${next}`,
+    'PO-nummer;ETA;Dagar till hylla;Nästa container;Inställningar',
+    `${po};${eta};${inlev};${next};${meta}`,
     '',
     'Art.nr;Lev.art.nr;Produkt;Bat-order;Flyg-brygga;Flyg-order;Dagar kvar;Enhetspris'
   ];
@@ -1700,7 +1771,9 @@ function doExport(type){
     lines.push(`${p.artNr};${(p.levArt||'').replace(/;/g,' ')};${p.produkt.replace(/;/g,' ')};${p.uBat||0};${p.uAir||0};${p.uFly||0};${dl};${p.enhet||''}`);
   });
   const csv=lines.join('\r\n');
-  const fname=type==='test'?`TEST-cheng-${todayStr}.csv`:`cheng-order-${po||todayStr}.csv`;
+  // Filename follows the active supplier (e.g. TEST-shalin-container-…)
+  const supSlug=activeSup.replace('_','-');
+  const fname=type==='test'?`TEST-${supSlug}-${todayStr}.csv`:`${supSlug}-order-${po||todayStr}.csv`;
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -1811,9 +1884,11 @@ function goTo(n){
     document.getElementById('preview-sharp').innerHTML='';
     const filtered=getFilteredRows();
     const famNames=[];
-    try{if(document.getElementById('ff-gen').checked)famNames.push('Genuine Leather');}catch(e){}
-    try{if(document.getElementById('ff-3c').checked)famNames.push('3 Card PU');}catch(e){}
-    try{if(document.getElementById('ff-oth').checked)famNames.push('Övriga');}catch(e){}
+    const fd=S().families;
+    if(Array.isArray(fd)&&fd.length>0){
+      const ids=['ff-gen','ff-3c','ff-oth'];
+      fd.forEach((f,i)=>{try{if(document.getElementById(ids[i]).checked)famNames.push(f.label);}catch(e){}});
+    } else famNames.push(S().label);
     const famStr=famNames.length>0?famNames.join(' + '):'alla familjer';
     const infoEl=document.getElementById('export-filter-text');
     if(infoEl)infoEl.textContent=`Exporten innehåller ${filtered.length} rader (${famStr}) — samma som visas i granskningsvyn med ditt aktiva filter.`;
