@@ -548,7 +548,7 @@ const SUPPLIERS={
   shalin_cont:{
     label:'Shalin — Container',
     enabled:true,
-    countIla:true,             // Shalin/EU: ila räknas som tillgängligt lager
+    countIla:false,            // Til = tillgängligt (i lager − reserverat). Ila = inkl. reservationer = SAMMA lager, inte extra → räkna inte (dubbelräkning)
     modes:['bat','fly'],        // container + flygbrygga (fyller tills container)
     leadDefaults:{sea:120,air:52,fly:52,cont:120},
     classThresholds:{A:30,B:15,Cp:10,C:2},
@@ -573,14 +573,14 @@ const SUPPLIERS={
         {t:'Klass A', r:'≥ 30 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
         {t:'Klass B', r:'25–29 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
         {t:'Under 25/år', r:'< 25 st/år', d:'Ingen container<br>→ hanteras av Vecka'},
-        {t:'Lager (Til + Ila)', r:'Ila räknas med', d:'Inkommande räknas<br>som tillgängligt'}
+        {t:'Lager', r:'Til = säljbart', d:'Reserverat borträknat<br>(Ila räknas ej)'}
       ]
     }
   },
   shalin_fly:{
     label:'Shalin — Flyg',
     enabled:false,
-    countIla:true,
+    countIla:false,           // Til = säljbart (Ila = inkl. reservationer, dubbelräknar)
     modes:['fly'],
     leadDefaults:{sea:0,air:25,fly:25,cont:0},
     classThresholds:{A:30,B:15,Cp:6,C:2},
@@ -593,7 +593,7 @@ const SUPPLIERS={
   eu:{
     label:'EU — leverantörer',
     enabled:false,
-    countIla:true,
+    countIla:false,           // Til = säljbart (Ila = inkl. reservationer, dubbelräknar)
     modes:['fly'],
     leadDefaults:{sea:0,air:14,fly:14,cont:0},
     classThresholds:{A:30,B:15,Cp:6,C:2},
@@ -1333,11 +1333,16 @@ function runCalc(){
       // flight could land, before the boat), counting everything already
       // incoming. Two gates so slow sellers don't get pointless flights:
       //   1) gap >= airBridgeMinMonths of normal sales, AND
-      //   2) gap >= a minimum unit floor (a sub-3-unit hole isn't worth a flight)
+      //   2) gap >= a minimum unit floor (a sub-5-unit hole isn't worth a flight)
+      // EXCEPTION: if the product genuinely runs dry before the container
+      // (stockoutDay is a real day), bridge it regardless of the unit floor —
+      // a real stockout on a real seller always warrants a flight.
       const airMinMonths=S().airBridgeMinMonths!=null?S().airBridgeMinMonths:1;
       const airUnitFloor=S().airBridgeMinUnits!=null?S().airBridgeMinUnits:3;
       const airThreshold=demandMonthly*airMinMonths;
-      if(sim.airGap>=airThreshold && sim.airGap>=airUnitFloor){
+      const runsDry=sim.stockoutDay!=null&&sim.stockoutDay>=0; // hits zero before container
+      const passesGates=sim.airGap>=airThreshold && sim.airGap>=airUnitFloor;
+      if(sim.airGap>0 && (passesGates || runsDry)){
         airQ=rnd5(Math.round(sim.airGap));
       }
 
