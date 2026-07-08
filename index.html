@@ -383,11 +383,11 @@ tr.removed td{opacity:.35}
   <div id="po-date-warning"></div>
   <div class="metric-row" id="metrics"></div>
   <div class="filter-bar">
-    <label>Ordertyp:</label>
-    <div class="cb-group">
-      <label class="cb-item"><input type="checkbox" id="f-bat" checked onchange="renderTable()"> <span class="badge bb">Båt</span></label>
-      <label class="cb-item"><input type="checkbox" id="f-air" checked onchange="renderTable()"> <span class="badge ba">Flyg-brygga</span></label>
-      <label class="cb-item"><input type="checkbox" id="f-fly" onchange="renderTable()"> <span class="badge bf">Övriga flyg</span></label>
+    <label id="otype-label">Ordertyp:</label>
+    <div class="cb-group" id="otype-group">
+      <label class="cb-item" id="f-bat-wrap"><input type="checkbox" id="f-bat" checked onchange="renderTable()"> <span class="badge bb" id="f-bat-lbl">Båt</span></label>
+      <label class="cb-item" id="f-air-wrap"><input type="checkbox" id="f-air" checked onchange="renderTable()"> <span class="badge ba" id="f-air-lbl">Flyg-brygga</span></label>
+      <label class="cb-item" id="f-fly-wrap"><input type="checkbox" id="f-fly" onchange="renderTable()"> <span class="badge bf">Övriga flyg</span></label>
     </div>
     <div class="filter-sep" id="fam-sep"></div>
     <span id="fam-filter-wrap">
@@ -399,7 +399,8 @@ tr.removed td{opacity:.35}
     </div>
     </span>
     <div class="filter-sep"></div>
-    <div class="filter-sep"></div>
+    <div class="filter-sep" id="klass-sep"></div>
+    <span id="klass-filter-wrap">
     <label>Klass:</label>
     <div class="cb-group">
       <label class="cb-item"><input type="checkbox" id="fk-A" checked onchange="renderTable()"> <span style="color:#0F6E56;font-weight:700">A</span></label>
@@ -407,9 +408,10 @@ tr.removed td{opacity:.35}
       <label class="cb-item"><input type="checkbox" id="fk-Cp" checked onchange="renderTable()"> <span style="color:#854F0B;font-weight:700">C+</span></label>
       <label class="cb-item"><input type="checkbox" id="fk-C" checked onchange="renderTable()"> <span style="color:#888;font-weight:700">C</span></label>
     </div>
+    </span>
     <div class="filter-sep"></div>
     <label class="cb-item"><input type="checkbox" id="f-warn-only" onchange="renderTable()"> Bara varningar ⚠️</label>
-    <label class="cb-item"><input type="checkbox" id="f-crit-only" onchange="renderTable()"> Tar slut före container 🔴</label>
+    <label class="cb-item" id="f-crit-wrap"><input type="checkbox" id="f-crit-only" onchange="renderTable()"> Tar slut före container 🔴</label>
     <input type="text" id="f-search" class="filter-search" placeholder="Sök art.nr eller namn..." oninput="renderTable()">
     <span style="margin-left:auto;font-size:11px;color:#888" id="row-count"></span>
   </div>
@@ -483,6 +485,7 @@ tr.removed td{opacity:.35}
   <div id="panel-test">
     <div class="alert alert-info" style="margin-bottom:1rem">ℹ️ Testexport — ingen PO-information behövs. Importera i Kodmyran, granska live och makulera manuellt om du behöver justera. Exportera skarp order när du är nöjd.</div>
     <button class="btn btn-warn" onclick="doExport('test')" style="margin-bottom:1.25rem">⬇️ Exportera testfil (CSV)</button>
+    <button class="btn" id="phaseout-btn" onclick="exportPhaseOut()" style="margin-bottom:1.25rem;margin-left:8px;display:none;background:#f5f5f3;border:1px solid #ddd;color:#666">🗑️ Exportera utfasningslista (Slutförsäljning: Ja)</button>
     <div id="preview-test"></div>
   </div>
 
@@ -1712,9 +1715,51 @@ function sortBy(col){
 function klassLabel(k){return k==='Cp'?'C+':k;}
 function klassColor(k){return{A:'#0F6E56',B:'#185FA5',Cp:'#854F0B',C:'#888',D:'#aaa'}[k]||'#888';}
 
+// Adapt the Granska filter bar to the active supplier.
+// Vecka: order-type slots become Veckoköp/Utfasning, hide class + crit filters.
+function renderFilterBar(){
+  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const show=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';};
+  const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  if(isVecka){
+    setText('f-bat-lbl','Veckoköp');
+    setText('f-air-lbl','Utfasning');
+    show('f-fly-wrap',false);        // no "övriga flyg"
+    show('klass-filter-wrap',false); // A/B/C+/C irrelevant
+    show('klass-sep',false);
+    show('f-crit-wrap',false);       // "tar slut före container" irrelevant
+    // ensure both Vecka slots are on by default
+  } else {
+    setText('f-bat-lbl','Båt');
+    setText('f-air-lbl','Flyg-brygga');
+    show('f-fly-wrap',true);
+    show('klass-filter-wrap',true);
+    show('klass-sep',true);
+    show('f-crit-wrap',true);
+  }
+}
+
 function renderMetrics(){
   const act=proposals.filter((_,i)=>!removedRows.has(i));
   const warn=act.filter(p=>p.warns&&p.warns.length>0).length;
+  const isVecka=S().modes&&S().modes[0]==='vecka';
+
+  if(isVecka){
+    const buys=act.filter(p=>p.otype==='vecka');
+    const buyUnits=buys.reduce((s,p)=>s+(p.uBat||0),0);
+    const phase=act.filter(p=>p.otype==='phaseout').length;
+    const proven=buys.filter(p=>p.veckaMode==='proven').length;
+    const step5=buys.filter(p=>p.veckaMode==='step'&&p.uBat>=5).length;
+    const step3=buys.filter(p=>p.veckaMode==='step'&&p.uBat<5).length;
+    document.getElementById('metrics').innerHTML=
+      `<div class="metric"><div class="lbl">Veckoköp</div><div class="val">${buys.length}</div><div style="font-size:10px;color:#888">${buyUnits} st</div></div>`+
+      `<div class="metric"><div class="lbl">Köp 3 / Köp 5</div><div class="val" style="font-size:16px;margin-top:7px">${step3} / ${step5}</div></div>`+
+      `<div class="metric"><div class="lbl">Bevisade (50d)</div><div class="val">${proven}</div></div>`+
+      `<div class="metric" style="background:#f5f5f3"><div class="lbl">Utfasning</div><div class="val" style="color:#999">${phase}</div></div>`+
+      `<div class="metric" style="${warn>0?'background:#fffbf0;border-color:#FAC775':''}"><div class="lbl">Varningar</div><div class="val" style="color:${warn>0?'#854F0B':''}">${warn}</div></div>`;
+    return;
+  }
+
   const crit=act.filter(p=>p.daysLeft<p.daysToContainer).length;
   const aCount=act.filter(p=>p.klass==='A').length;
   const bCount=act.filter(p=>p.klass==='B').length;
@@ -1741,7 +1786,7 @@ function renderTable(){
     const t=p.otype;
     const isVecka=S().modes&&S().modes[0]==='vecka';
     const typeOk=isVecka
-      ? (fBat&&(t==='vecka'||t==='phaseout'))
+      ? ((fBat&&t==='vecka')||(fAir&&t==='phaseout'))
       : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
     if(!typeOk)return false;
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
@@ -1817,9 +1862,29 @@ function removeReviewRow(i){if(removedRows.has(i))removedRows.delete(i);else rem
 
 // ── Confirm ──────────────────────────────────────────────────────
 function renderConfirm(){
-  console.log('renderConfirm called, proposals:', proposals.length, 'savedFilter:', JSON.stringify(savedFilter));
   const act=getFilteredRows();
-  console.log('renderConfirm filtered rows:', act.length, 'bat total:', act.reduce((s,p)=>s+p.uBat,0));
+  const isVecka=S().modes&&S().modes[0]==='vecka';
+  if(isVecka){
+    const buys=act.filter(p=>p.otype==='vecka');
+    const phase=act.filter(p=>p.otype==='phaseout');
+    const buyUnits=buys.reduce((s,p)=>s+(p.uBat||0),0);
+    const proven=buys.filter(p=>p.veckaMode==='proven').length;
+    document.getElementById('confirm-summary').innerHTML=`
+      <div class="sum-card" style="border-color:#9FE1CB"><div style="font-size:11px;color:#0F6E56;text-transform:uppercase;font-weight:600">Veckoköp</div><div style="font-size:28px;font-weight:500;color:#0F6E56;margin:8px 0 4px">${buyUnits}</div><div style="font-size:11px;color:#888">${buys.length} produkter (${proven} bevisade)</div></div>
+      <div class="sum-card" style="border-color:#e5e5e2"><div style="font-size:11px;color:#888;text-transform:uppercase;font-weight:600">Utfasning</div><div style="font-size:28px;font-weight:500;color:#999;margin:8px 0 4px">${phase.length}</div><div style="font-size:11px;color:#888">produkter → Slutförsäljning</div></div>
+      <div class="sum-card" style="border-color:#B5D4F4"><div style="font-size:11px;color:#185FA5;text-transform:uppercase;font-weight:600">Totalt rader</div><div style="font-size:28px;font-weight:500;color:#185FA5;margin:8px 0 4px">${act.length}</div><div style="font-size:11px;color:#888">i aktuellt filter</div></div>`;
+    const warnP=act.filter(p=>p.warns&&p.warns.length>0);
+    if(warnP.length>0){
+      let wh=`<div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#854F0B">⚠️ ${warnP.length} noteringar — granska innan du bekräftar</div>`;
+      warnP.slice(0,60).forEach(p=>p.warns.forEach(w=>{wh+=`<div class="warn-item">⚠️ <div><strong>Art. ${p.artNr}</strong> — ${p.produkt.substring(0,50)}${p.produkt.length>50?'…':''}<br><span style="color:#5c3a0a">${w}</span></div></div>`;}));
+      if(warnP.length>60)wh+=`<div style="font-size:11px;color:#888;margin-top:6px">…och ${warnP.length-60} till.</div>`;
+      document.getElementById('confirm-warnings').innerHTML=wh+'<div style="margin-bottom:1.25rem"></div>';
+    } else {
+      document.getElementById('confirm-warnings').innerHTML='<div class="alert alert-ok" style="margin-bottom:1.25rem">✅ Inga noteringar.</div>';
+    }
+    document.getElementById('confirm-cb').checked=false;updateConfirmBtn();
+    return;
+  }
   const bat=act.filter(p=>p.otype.includes('bat')),air=act.filter(p=>p.otype.includes('air')),fly=act.filter(p=>p.otype==='fly');
   document.getElementById('confirm-summary').innerHTML=`
     <div class="sum-card" style="border-color:#9FE1CB"><div style="font-size:11px;color:#0F6E56;text-transform:uppercase;font-weight:600">Båt-order</div><div style="font-size:28px;font-weight:500;color:#0F6E56;margin:8px 0 4px">${bat.reduce((s,p)=>s+p.uBat,0)}</div><div style="font-size:11px;color:#888">${bat.length} produkter</div></div>
@@ -1843,6 +1908,29 @@ function updateConfirmBtn(){
 // ── Export ───────────────────────────────────────────────────────
 function buildPreview(type){
   const act=proposals.filter((_,i)=>!removedRows.has(i));
+  const isVecka=S().modes&&S().modes[0]==='vecka';
+  if(isVecka){
+    const buys=act.filter(p=>p.otype==='vecka'&&(p.uBat||0)>0);
+    let h=`<div style="margin-top:1rem;border:1px solid #e5e5e2;border-radius:10px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:#f5f5f3">`;
+    ['Art.nr','Lev.art.nr','Produkt','Antal','Läge','Dagar kvar'].forEach(c=>{
+      h+=`<th style="text-align:left;padding:8px 7px;font-weight:500;color:#666;border-bottom:1px solid #e5e5e2">${c}</th>`;});
+    h+='</tr></thead><tbody>';
+    buys.forEach((p,idx)=>{
+      const dl=p.daysLeft>=999?'—':p.daysLeft;
+      const bg=idx%2===0?'#fff':'#fafaf8';
+      const mode=p.veckaMode==='proven'?'Bevisad (50d)':(p.uBat>=5?'Momentum 5':'Bas 3');
+      h+=`<tr style="background:${bg}">
+        <td style="padding:6px 7px;border-bottom:1px solid #f1efe8;font-weight:600">${p.artNr}</td>
+        <td style="padding:6px 7px;border-bottom:1px solid #f1efe8;font-size:10px">${p.levArt||''}</td>
+        <td style="padding:6px 7px;border-bottom:1px solid #f1efe8">${p.produkt.substring(0,35)}${p.produkt.length>35?'…':''}</td>
+        <td style="padding:6px 7px;border-bottom:1px solid #f1efe8;text-align:right;color:#0F6E56;font-weight:600">${p.uBat}</td>
+        <td style="padding:6px 7px;border-bottom:1px solid #f1efe8;font-size:10px;color:#888">${mode}</td>
+        <td style="padding:6px 7px;border-bottom:1px solid #f1efe8;text-align:right">${dl}</td>
+      </tr>`;});
+    h+=`</tbody></table></div><p style="font-size:11px;color:#888;margin-top:6px">${buys.length} veckoköp (${buys.reduce((s,p)=>s+p.uBat,0)} st). Utfasningar exporteras separat.</p>`;
+    return h;
+  }
   let h=`<div style="margin-top:1rem;border:1px solid #e5e5e2;border-radius:10px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:11px">
     <thead><tr style="background:#f5f5f3">`;
   ['Art.nr','Lev.art.nr','Produkt','Båt','Flyg-brygga','Flyg','Dagar kvar','Enhetspris'].forEach(c=>{
@@ -1896,7 +1984,7 @@ function getFilteredRows(){
     const t=p.otype;
     const isVecka=S().modes&&S().modes[0]==='vecka';
     const typeOk=isVecka
-      ? (fBat&&(t==='vecka'||t==='phaseout'))
+      ? ((fBat&&t==='vecka')||(fAir&&t==='phaseout'))
       : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
     if(!typeOk)return false;
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
@@ -1912,10 +2000,33 @@ function getFilteredRows(){
 }
 
 function doExport(type){
+  const isVecka=S().modes&&S().modes[0]==='vecka';
   const act=getFilteredRows();
   if(act.length===0){alert('Inga rader att exportera. Gå tillbaka och beräkna ett orderförslag.');return;}
   // Save this run for future comparison
   saveLastRun(act);
+  const supSlug=activeSup.replace(/_/g,'-');
+
+  if(isVecka){
+    // Weekly buy export: only actual buys (skip phase-outs; those get their own export)
+    const buys=act.filter(p=>p.otype==='vecka'&&(p.uBat||0)>0);
+    const meta=`Leverantör: ${S().label} | Ledtid: ${gv('s-fly')||'—'} d | Container-tröskel: ${gv('s-miny')||'—'} | Utfasningsgräns art: ${gv('s-artcut')||'—'}`;
+    const lines=[
+      'Typ;Datum;Inställningar',
+      `${type==='test'?'TEST':'SKARP'};${todayStr};${meta}`,
+      '',
+      'Art.nr;Lev.art.nr;Produkt;Antal;Dagar kvar;Enhetspris'
+    ];
+    buys.forEach(p=>{
+      const dl=p.daysLeft>=999?'':p.daysLeft;
+      lines.push(`${p.artNr};${(p.levArt||'').replace(/;/g,' ')};${p.produkt.replace(/;/g,' ')};${p.uBat||0};${dl};${p.enhet||''}`);
+    });
+    downloadCsv(lines.join('\r\n'), `${type==='test'?'TEST-':''}${supSlug}-veckokop-${todayStr}.csv`);
+    const prevId=type==='test'?'preview-test':'preview-sharp';
+    document.getElementById(prevId).innerHTML=buildPreview(type);
+    return;
+  }
+
   const po=type==='test'?'TEST-'+todayStr:(gv('exp-po')||'');
   const eta=type==='test'?'':gv('exp-eta');
   const inlev=type==='test'?'':gv('exp-inlev');
@@ -1932,19 +2043,41 @@ function doExport(type){
     const dl=p.daysLeft>=999?'':p.daysLeft;
     lines.push(`${p.artNr};${(p.levArt||'').replace(/;/g,' ')};${p.produkt.replace(/;/g,' ')};${p.uBat||0};${p.uAir||0};${p.uFly||0};${dl};${p.enhet||''}`);
   });
-  const csv=lines.join('\r\n');
-  // Filename follows the active supplier (e.g. TEST-shalin-container-…)
-  const supSlug=activeSup.replace('_','-');
-  const fname=type==='test'?`TEST-${supSlug}-${todayStr}.csv`:`${supSlug}-order-${po||todayStr}.csv`;
+  downloadCsv(lines.join('\r\n'), type==='test'?`TEST-${supSlug}-${todayStr}.csv`:`${supSlug}-order-${po||todayStr}.csv`);
+  const prevId=type==='test'?'preview-test':'preview-sharp';
+  document.getElementById(prevId).innerHTML=buildPreview(type);
+
+  showGlobalStatus(`✅ Exporterade ${act.length} rader`,'alert-ok');
+}
+
+// Shared CSV download (BOM for Excel/Kodmyran compatibility)
+function downloadCsv(csv,fname){
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;a.download=fname;a.style.display='none';
   document.body.appendChild(a);a.click();
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
-  const prevId=type==='test'?'preview-test':'preview-sharp';
-  document.getElementById(prevId).innerHTML=buildPreview(type);
-  showGlobalStatus(`✅ Exporterade ${act.length} rader till ${fname}`,'alert-ok');
+}
+
+// Export the phase-out list (Vecka): art.nr + "Slutförsäljning: Ja" for
+// import into Kodmyran. Uses ALL phase-outs in the current family filter,
+// regardless of the order-type checkboxes.
+function exportPhaseOut(){
+  const isVecka=S().modes&&S().modes[0]==='vecka';
+  if(!isVecka){alert('Utfasning finns bara för Shalin Vecka.');return;}
+  const selFam=famSelFromSlots(
+    document.getElementById('ff-gen').checked,
+    document.getElementById('ff-3c').checked,
+    document.getElementById('ff-oth').checked);
+  const phase=proposals.filter((p,i)=>!removedRows.has(i)&&p.otype==='phaseout'
+    &&(!selFam||selFam[getFamily(p)]));
+  if(phase.length===0){alert('Inga produkter markerade för utfasning i aktuellt filter.');return;}
+  const lines=['Art.nr;Produkt;Slutförsäljning'];
+  phase.forEach(p=>lines.push(`${p.artNr};${p.produkt.replace(/;/g,' ')};Ja`));
+  const supSlug=activeSup.replace(/_/g,'-');
+  downloadCsv(lines.join('\r\n'), `${supSlug}-utfasning-${todayStr}.csv`);
+  showGlobalStatus(`✅ Exporterade ${phase.length} produkter för utfasning (Slutförsäljning: Ja)`,'alert-ok');
 }
 
 function showGlobalStatus(msg,cls){
@@ -2054,12 +2187,15 @@ function goTo(n){
     const famStr=famNames.length>0?famNames.join(' + '):'alla familjer';
     const infoEl=document.getElementById('export-filter-text');
     if(infoEl)infoEl.textContent=`Exporten innehåller ${filtered.length} rader (${famStr}) — samma som visas i granskningsvyn med ditt aktiva filter.`;
+    // Phase-out export button only for Vecka
+    const poBtn=document.getElementById('phaseout-btn');
+    if(poBtn)poBtn.style.display=(S().modes&&S().modes[0]==='vecka')?'':'none';
   }
   for(let i=0;i<6;i++){
     document.getElementById('v'+i).style.display=i===n?'':'none';
     document.getElementById('st'+i).className='step'+(i===n?' active':i<n?' done':'');
   }
-  if(n===3)renderTable();
+  if(n===3){renderFilterBar();renderTable();}
   window.scrollTo(0,0);
 }
 
