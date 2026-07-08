@@ -284,7 +284,7 @@ tr.removed td{opacity:.35}
       ℹ️ <div><strong>Nästa container-datum och båt-ledtid krockar inte.</strong><br>Container-datumet = din redan beställda container som du vet när den anländer.<br>Båt-ledtiden = grundregel för att beräkna hur mycket du behöver beställa nu.<br><br>Exempel: 15/mån · 130 dagar till container + 4 mån cover = 250 dagars behov. Lager 50 + PO 30 = 80 → beställ 170 st → avrundat till 170.</div>
     </div>
 
-    <div style="margin-bottom:1.25rem">
+    <div style="margin-bottom:1.25rem" id="mode-block">
       <label style="font-size:11px;color:#666;display:block;margin-bottom:8px;font-weight:600" id="mode-label">Orderläge för Cheng</label>
       <div class="mode-toggle">
         <button class="mode-btn active" id="mode-bat" onclick="setMode('bat')">🚢 Båt + Flyg-brygga</button>
@@ -292,7 +292,7 @@ tr.removed td{opacity:.35}
       </div>
       <p style="font-size:11px;color:#888;margin-top:6px" id="mode-desc">Standard för Genuine Leather och 3 Card PU. Systemet föreslår båtorder + flyg-brygga om lagret riskerar ta slut.</p>
     </div>
-    <div class="date-calc">
+    <div class="date-calc" id="date-calc-block">
       <div style="font-size:12px;font-weight:600;margin-bottom:10px;color:#185FA5">📅 Räkna ut nästa container-datum</div>
       <div class="date-calc-row">
         <label>Från idag</label>
@@ -306,39 +306,44 @@ tr.removed td{opacity:.35}
     </div>
 
     <div class="settings-grid">
-      <div class="fi" style="position:relative">
+      <div class="fi" style="position:relative" id="fw-cont">
         <label>Nästa container anländer (säljbar hos er) <button class="help-btn" onclick="toggleTip('t-cont')">?</button></label>
         <input type="date" id="s-cont" min="2024-01-01" max="2030-12-31" onchange="saveCfg()">
         <div id="t-cont" class="tooltip"><strong>Nästa container-datum</strong><br>Datumet du kan börja sälja — ETA + inleveranstid. Krockar inte med båt-ledtiden.<div class="ex">Container anländer hamn 1 okt · 14 dagar inlev → skriv 2026-10-15</div></div>
       </div>
-      <div class="fi" style="position:relative">
+      <div class="fi" style="position:relative" id="fw-sea">
         <label>Båt-ledtid till hylla (dagar) <button class="help-btn" onclick="toggleTip('t-sea')">?</button></label>
         <input type="number" id="s-sea" value="155" min="100" max="220" onchange="saveCfg()">
         <div id="t-sea" class="tooltip"><strong>Båt-ledtid — grundregel</strong><br>Används för framtida beräkningar, krockar inte med container-datumet.<div class="ex">30 prod + 20 väntan + 90 sjö + 14 inlev = 154 → sätt 155</div></div>
       </div>
-      <div class="fi" style="position:relative">
-        <label>Flyg-ledtid Genuine/3Card (dagar) <button class="help-btn" onclick="toggleTip('t-air')">?</button></label>
+      <div class="fi" style="position:relative" id="fw-air">
+        <label id="air-label-wrap">Flyg-ledtid Genuine/3Card (dagar) <button class="help-btn" onclick="toggleTip('t-air')">?</button></label>
         <input type="number" id="s-air" value="52" min="20" max="90" onchange="saveCfg()">
         <div id="t-air" class="tooltip"><strong>Flyg-ledtid Genuine/3 Card</strong><br>Korrekt ledtid: 35 prod + 10 flyg + 7 inlev = 52 dagar.<div class="ex">Tidigare system hade fel värde 28 dagar — nu är det rätt.</div></div>
       </div>
-      <div class="fi">
+      <div class="fi" id="fw-fly">
         <label id="fly-label">Flyg-ledtid övriga Cheng (dagar)</label>
         <input type="number" id="s-fly" value="21" min="10" max="45" onchange="saveCfg()">
       </div>
-      <div class="fi" style="position:relative">
+      <div class="fi" style="position:relative" id="fw-miny">
         <label><span id="miny-label">Minsta årsförsäljning för båtorder</span> <button class="help-btn" onclick="toggleTip('t-miny')">?</button></label>
         <input type="number" id="s-miny" value="15" min="5" max="100" onchange="saveCfg()">
         <div id="t-miny" class="tooltip"><strong>Minsta årsförsäljning</strong><br>Under denna gräns → ingen automatisk båtorder.<div class="ex">12/år → ingen båt. 18/år → båtorder föreslås.</div></div>
       </div>
-      <div class="fi" style="position:relative">
+      <div class="fi" style="position:relative" id="fw-tup">
         <label>Trend uppåt (1m ÷ 3m-snitt ≥) <button class="help-btn" onclick="toggleTip('t-tup')">?</button></label>
         <input type="number" id="s-tup" value="0.9" step="0.05" min="0.5" max="2.0" onchange="saveCfg()">
         <div id="t-tup" class="tooltip"><strong>Trend uppåt</strong><br>Om senaste månaden ÷ 3m-snitt ≥ detta = uppåttrend. Systemet använder högre efterfrågan vid beräkning.<div class="ex">Sålt 15 senaste mån, 3m-snitt 12 → kvot 1.25 ≥ 0.9 → uppåt ✓</div></div>
       </div>
-      <div class="fi" style="position:relative">
+      <div class="fi" style="position:relative" id="fw-tdn">
         <label>Trend nedåt (1m ÷ 3m-snitt &lt;) <button class="help-btn" onclick="toggleTip('t-tdn')">?</button></label>
         <input type="number" id="s-tdn" value="0.7" step="0.05" min="0.2" max="1.0" onchange="saveCfg()">
         <div id="t-tdn" class="tooltip"><strong>Trend nedåt</strong><br>Om kvoten är under detta = nedåttrend. Systemet använder lägre efterfrågan.<div class="ex">Sålt 5 senaste mån, 3m-snitt 10 → kvot 0.5 &lt; 0.7 → nedåt ✓</div></div>
+      </div>
+      <div class="fi" style="position:relative;display:none" id="fw-vecka-artcut">
+        <label>Utfasningsgräns — artikelnr under detta = 12 mån+ gammal <button class="help-btn" onclick="toggleTip('t-artcut')">?</button></label>
+        <input type="number" id="s-artcut" value="0" min="0" max="9999999" onchange="saveCfg()">
+        <div id="t-artcut" class="tooltip"><strong>Utfasningsgräns</strong><br>Artiklar med lägre nummer än detta räknas som ~12 mån gamla. Om de dessutom sålt under 10/år fasas de ut.<div class="ex">Sätt t.ex. 241000 om artiklar under det är minst ett år gamla.</div></div>
       </div>
       <div class="fi" style="grid-column:1/-1;background:#f5f5f3;border-radius:8px;padding:10px 14px;border:1px solid #e5e5e2">
         <label style="font-weight:600;color:#1a1a1a;margin-bottom:6px;display:block">Täckningsmål per klass (automatisk klassificering)</label>
@@ -683,9 +688,12 @@ function applySupDefaults(){
   const d=S().leadDefaults;
   const set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
   set('s-sea',d.sea);set('s-air',d.air);set('s-fly',d.fly);
-  // min-year threshold: container gate for Shalin, else boat threshold
-  const minY=S().minYearForContainer!=null?S().minYearForContainer:S().minYearForBat;
+  // min-year threshold: container gate, boat threshold, or vecka container cutoff
+  const minY=S().minYearForContainer!=null?S().minYearForContainer
+            :(S().veckaContainerThreshold!=null?S().veckaContainerThreshold:S().minYearForBat);
   set('s-miny',minY);
+  // Vecka: article-number phase-out cutoff starts blank (user sets it each run)
+  if(S().modes&&S().modes[0]==='vecka'){const el=document.getElementById('s-artcut');if(el&&!el.value)el.value=0;}
   // mode: fall back to supplier's first allowed mode
   if(!S().modes.includes(orderMode))setMode(S().modes[0]);
   renderSettingsUI();
@@ -703,6 +711,26 @@ function renderSettingsUI(){
   setText('mode-desc',t.modeDesc);
   setText('fly-label',t.flyLabel);
   setText('miny-label',t.minYearLabel);
+
+  // ── Vecka mode: hide all container-only fields, show only what matters ──
+  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const show=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';};
+  // Container-only blocks
+  show('mode-block',!isVecka);
+  show('date-calc-block',!isVecka);
+  show('fw-cont',!isVecka);
+  show('fw-sea',!isVecka);
+  show('fw-air',!isVecka);   // "Flyg-ledtid Genuine/3Card" — irrelevant for Vecka
+  show('fw-tup',!isVecka);
+  show('fw-tdn',!isVecka);
+  // Vecka-only block
+  show('fw-vecka-artcut',isVecka);
+  // "Ledtid Vecka" reuses the s-fly field; relabel and keep it visible
+  if(isVecka){
+    setText('fly-label','Ledtid Vecka (dagar)');
+    const cardEl=document.getElementById('class-cards');
+  }
+
   const cardsEl=document.getElementById('class-cards');
   if(cardsEl&&t.cards){
     const palette=[
@@ -762,7 +790,7 @@ function prunePOList(){
 }
 function cfgKey(){return 'inkop-cfg-'+activeSup;}
 function saveCfg(){
-  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
+  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),artcut:gv('s-artcut'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
   saveToStorage(cfgKey(),c);showSaved('cfg-saved-tag');
 }
 // Load this supplier's saved settings. If none exist yet, apply the
@@ -771,7 +799,7 @@ function saveCfg(){
 function loadCfg(){
   const c=loadFromStorage(cfgKey());
   if(c){
-    ['cont','sea','air','fly','miny','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined&&c[k]!=='')el.value=c[k];});
+    ['cont','sea','air','fly','miny','artcut','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined&&c[k]!=='')el.value=c[k];});
     if(c.mode){orderMode=c.mode;setMode(c.mode);}
   } else {
     // No saved settings for this supplier yet → apply its defaults
@@ -1493,8 +1521,8 @@ function runCalc(){
 //   • Old + weak (<10/år and art < artCutoff) → phase out
 function runVeckaCalc(cfg,today){
   const S_=S();
-  const artCutoff=parseInt(gv('s-miny'))||0; // "12 mån+"-gräns: artiklar UNDER = gamla
-  const contThr=S_.veckaContainerThreshold;
+  const artCutoff=parseInt(gv('s-artcut'))||0; // "12 mån+"-gräns: artiklar UNDER = gamla
+  const contThr=parseInt(gv('s-miny'))||S_.veckaContainerThreshold;
   const reorderCover=S_.reorderDaysCover;
   const provenM3=S_.provenM3, provenCover=S_.provenDaysCover;
   const stepSmall=S_.stepSmall, stepBig=S_.stepBig;
