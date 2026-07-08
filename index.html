@@ -1199,9 +1199,11 @@ function classify(p){
   if(y>=t.B) return 'B';
   if(y>=t.Cp)  return 'Cp';
   if(y>=t.C)  return 'C';
-  // New/emerging product — check recent months
-  if(m1>=e.bM1||m3avg>=e.bM3avg) return 'B';
-  if(m1>=e.cpM1||m3avg>=e.cpM3avg) return 'Cp';
+  // New/emerging product — check recent months (only if supplier defines it)
+  if(e){
+    if(m1>=e.bM1||m3avg>=e.bM3avg) return 'B';
+    if(m1>=e.cpM1||m3avg>=e.cpM3avg) return 'Cp';
+  }
   return 'D';
 }
 
