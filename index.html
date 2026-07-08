@@ -152,7 +152,7 @@ tr.removed td{opacity:.35}
   <div class="sup-selector">
     <button class="sup-btn active" onclick="selectSup('cheng',this)">Cheng</button>
     <button class="sup-btn" onclick="selectSup('shalin_cont',this)">Shalin Container</button>
-    <button class="sup-btn soon" title="Kommer snart">Shalin Flyg</button>
+    <button class="sup-btn" onclick="selectSup('shalin_vecka',this)">Shalin Vecka</button>
     <button class="sup-btn soon" title="Kommer snart">EU</button>
     <button class="sup-btn soon" title="Kommer snart">Sverige</button>
   </div>
@@ -583,18 +583,38 @@ const SUPPLIERS={
       ]
     }
   },
-  shalin_fly:{
-    label:'Shalin — Flyg',
-    enabled:false,
-    countIla:false,           // Til = säljbart (Ila = inkl. reservationer, dubbelräknar)
-    modes:['fly'],
-    leadDefaults:{sea:0,air:25,fly:25,cont:0},
-    classThresholds:{A:30,B:15,Cp:6,C:2},
-    emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
-    coverMonths:{A:{up:4,down:3,stable:4},B:3,Cp:{down:2,stable:2},C:0,D:0},
+  shalin_vecka:{
+    label:'Shalin — Vecka',
+    enabled:true,
+    countIla:false,            // Til = säljbart
+    modes:['vecka'],           // eget veckoläge (varken båt eller flyg-brygga)
+    leadDefaults:{sea:0,air:25,fly:25,cont:0}, // ~25 dagar order→säljbar
+    veckaLead:25,              // ledtid tills en veckoorder är säljbar
+    classThresholds:{A:30,B:15,Cp:10,C:2},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
-    safetyNet:{enabled:false},
-    minYearForBat:6
+    // ── Vecka-specifika regler ──
+    veckaContainerThreshold:25,// 25+/år hanteras av Container, ej Vecka
+    reorderDaysCover:30,       // köp när lagret räcker < N dagar framåt
+    stepSmall:3,               // svag månad → köp 3
+    stepBig:5,                 // stark månad (momentum) → köp 5
+    provenM3:10,               // sålt N+ på 3 mån → "bevisad", ge längre täckning
+    provenDaysCover:50,        // bevisad produkt: 50 dagars täckning
+    phaseOutMaxYear:10,        // < N sålda/år → kandidat för utfasning…
+    phaseOutMinArt:0,          // …OM artikelnr < gräns (sätts i UI, 12 mån+ gammal)
+    families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
+    familyDetector:'shalin',
+    uiText:{
+      modeLabel:'Orderläge för Shalin Vecka',
+      modeDesc:'Veckovis påfyllning. Köp när lagret räcker < 30 dagar. Nya produkter trappas upp 3→5; åldrande svagsäljare fasas ut.',
+      flyLabel:'Ledtid Vecka (dagar)',
+      minYearLabel:'Container-tröskel (25+ hanteras av Container)',
+      cards:[
+        {t:'Ny / oprövad', r:'Litet första köp', d:'Svag mån: 3 st<br>Stark mån: 5 st'},
+        {t:'Bevisad', r:'10+ på 3 mån', d:'50 dagars täckning<br>trappas upp'},
+        {t:'Mot Container', r:'25+/år', d:'Lämnar Vecka<br>→ Container tar över'},
+        {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
+      ]
+    }
   },
   eu:{
     label:'EU — leverantörer',
@@ -1337,6 +1357,12 @@ function runCalc(){
 
   proposals=[];removedRows=new Set();
 
+  // ── SHALIN VECKA: weekly top-up flow (own logic, not container/air) ──
+  if(S().modes&&S().modes[0]==='vecka'){
+    runVeckaCalc(cfg,today);
+    return;
+  }
+
   for(const p of products){
     if(p.y1===0&&p.m3===0&&p.m1===0)continue;
 
@@ -1458,7 +1484,107 @@ function runCalc(){
   goTo(3);
 }
 
-// Banner shown in Granska when linked POs lack a creditable date.
+// ── SHALIN VECKA calculation ─────────────────────────────────────
+// Weekly top-up. Fundamentally different from container:
+//   • Buy only when stock covers < reorderDaysCover days ahead
+//   • Quantity via momentum step (weak month → 3, strong → 5)
+//   • "Proven" products (10+/3mån) get 50-day coverage instead
+//   • 25+/år leaves Vecka (Container handles it)
+//   • Old + weak (<10/år and art < artCutoff) → phase out
+function runVeckaCalc(cfg,today){
+  const S_=S();
+  const artCutoff=parseInt(gv('s-miny'))||0; // "12 mån+"-gräns: artiklar UNDER = gamla
+  const contThr=S_.veckaContainerThreshold;
+  const reorderCover=S_.reorderDaysCover;
+  const provenM3=S_.provenM3, provenCover=S_.provenDaysCover;
+  const stepSmall=S_.stepSmall, stepBig=S_.stepBig;
+  const phaseMaxYear=S_.phaseOutMaxYear;
+
+  for(const p of products){
+    // Skip totally dead rows with no data AND no stock (nothing to decide)
+    if(p.y1===0&&p.m3===0&&p.m1===0&&p.lager===0)continue;
+
+    // Container-qualified products are handled by Shalin Container, not here
+    if(p.y1>=contThr)continue;
+
+    const a3=p.m3/3;
+    const trend=getTrend(p,cfg);
+    const demandMonthly=getDemand(p,trend);
+    const daily=demandMonthly/30;
+    const stock=p.lager+(S_.countIla?p.ila:0);
+    const incoming=(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0);
+    const onHand=stock+incoming;
+
+    // Days the current stock will last
+    const daysLeft = daily>0 ? Math.round(onHand/daily) : 999;
+
+    // ── Phase-out: old (art below cutoff) AND weak (<phaseMaxYear/year) ──
+    const isOld = artCutoff>0 && p.artNr < artCutoff;
+    const isWeak = p.y1 < phaseMaxYear;
+    const phaseOut = isOld && isWeak;
+    if(phaseOut){
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',daysLeft,{phaseOut:true}));
+      continue;
+    }
+
+    // ── Reorder gate: only buy if stock covers < reorderCover days ──
+    if(daysLeft>=reorderCover) continue;
+
+    // ── Proven product (10+ sold in 3 months) → 50-day coverage ──
+    let qty=0, mode='vecka';
+    if(p.m3>=provenM3){
+      const target=Math.ceil(daily*provenCover);
+      const need=target-onHand;
+      if(need>0) qty=rnd5(Math.round(need));
+      mode='proven';
+    } else {
+      // ── Momentum step ──
+      // Big step (5) only when the last month shows real momentum: it must
+      // have actually sold >= stepBig-worth recently ("3 på en månad → köp 5").
+      // A product selling ~1/month stays at the small step (3) — avoids the
+      // "2 extra st × tusentals produkter = mycket pengar"-risk.
+      const strong = p.m1>=stepSmall && p.m1>=a3; // sold at least small-step last month AND not fading
+      qty = strong ? stepBig : stepSmall;
+      mode='step';
+      // Don't buy if incoming already covers the gap
+      if(incoming>=qty) qty=0;
+    }
+    if(qty<=0)continue;
+
+    proposals.push(mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,{}));
+  }
+  proposals.forEach(p=>{p.warns=getVeckaWarnings(p);});
+  renderPODateWarning();
+  goTo(3);
+}
+
+// Build a proposal object compatible with the Granska/Bekräfta views.
+function mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,extra){
+  const lastRunData=getLastRun();
+  const lastPrev=lastRunData[p.artNr];
+  const lastDiff=lastPrev?qty-(lastPrev.bat||0):0;
+  return {
+    ...p, trend, klass:classify(p), demandMonthly,
+    batQ:qty, airQ:0, otype:qty>0?'vecka':(extra.phaseOut?'phaseout':'none'),
+    uBat:qty, uAir:0, coverAfter:demandMonthly>0?Math.round((qty/demandMonthly)*10)/10:0,
+    lastDiff, poAir:0, poBat:0,
+    poBatTotal:(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0),
+    daysLeft, daysLeftTotal:daysLeft, daysToContainer:daysLeft,
+    inPO:hasActivePO(p.filePOs), sim:null,
+    veckaMode:mode, phaseOut:!!extra.phaseOut,
+    suggestQty:qty, warns:[]
+  };
+}
+
+function getVeckaWarnings(p){
+  const w=[];
+  if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
+  else if(p.veckaMode==='proven') w.push(`Bevisad (10+ på 3 mån) — 50 dagars täckning.`);
+  else if(p.uBat>=5&&p.m1>p.m3/3) w.push(`Stark månad — trappar upp till 5 st.`);
+  if(p.poBatTotal>0) w.push(`${p.poBatTotal} st redan på väg.`);
+  return w;
+}
+
 // These POs are NOT counted as incoming stock → risk of double-ordering.
 function renderPODateWarning(){
   const el=document.getElementById('po-date-warning');
@@ -1583,7 +1709,10 @@ function renderTable(){
   let rows=[...proposals.entries()].map(([i,p])=>({i,p})).filter(({i,p})=>{
     if(removedRows.has(i))return false;
     const t=p.otype;
-    const typeOk=(fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly');
+    const isVecka=S().modes&&S().modes[0]==='vecka';
+    const typeOk=isVecka
+      ? (fBat&&(t==='vecka'||t==='phaseout'))
+      : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
     if(!typeOk)return false;
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
     const famOk=!selFam||!!selFam[getFamily(p)];
@@ -1609,7 +1738,7 @@ function renderTable(){
     const tc=p.trend==='up'?'tu':p.trend==='down'?'td2':'tm';
     const tl=p.trend==='up'?'↑ Upp':p.trend==='down'?'↓ Ned':'→ Stabil';
     let cls='';if(p.inPO&&!hasWarn)cls='in-po';else if(hasWarn)cls='warn-row';
-    let badges='';if(t.includes('bat'))badges+=`<span class="badge bb">Båt</span> `;if(t.includes('air'))badges+=`<span class="badge ba">Flyg</span>`;if(t==='fly')badges+=`<span class="badge bf">Flyg</span>`;
+    let badges='';if(t==='vecka')badges+=`<span class="badge bb">Vecka</span> `;else if(t==='phaseout')badges+=`<span class="badge" style="background:#f5f5f3;color:#999;border:1px solid #ddd">Utfasning</span> `;if(t.includes('bat'))badges+=`<span class="badge bb">Båt</span> `;if(t.includes('air'))badges+=`<span class="badge ba">Flyg</span>`;if(t==='fly')badges+=`<span class="badge bf">Flyg</span>`;
     const fs=t==='bat+air'?`${p.batQ}+${p.airQ}`:t==='fly'?p.flyQ:p.batQ;
     const dl=p.daysLeft>=999?'—':p.daysLeft;
     // Red = runs out before container, Yellow = within 30 days of container, Green = safe
@@ -1735,7 +1864,10 @@ function getFilteredRows(){
   return proposals.filter((p,i)=>{
     if(removedRows.has(i))return false;
     const t=p.otype;
-    const typeOk=(fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly');
+    const isVecka=S().modes&&S().modes[0]==='vecka';
+    const typeOk=isVecka
+      ? (fBat&&(t==='vecka'||t==='phaseout'))
+      : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
     if(!typeOk)return false;
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
     const famOk=!selFam||!!selFam[getFamily(p)];
