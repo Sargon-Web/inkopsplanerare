@@ -196,8 +196,10 @@ tr.removed td{opacity:.35}
 <!-- V0: IMPORTERA -->
 <div id="v0">
   <div class="card">
-    <h3 style="font-size:14px;font-weight:500;margin-bottom:6px">Steg 1 — Ladda upp 12-månadersfil</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:1rem">Exportera "Alla produkter från leverantören" med 1 års data från Kodmyran. Ladda upp den här first.</p>
+    <h3 style="font-size:14px;font-weight:500;margin-bottom:6px;position:relative">Steg 1 — Ladda upp 12-månadersfil <button class="help-btn" onclick="toggleTip('t-step1')">?</button>
+      <div id="t-step1" class="tooltip"><strong>Vad gör jag här?</strong><br>Detta är alltid första steget. Gå till Kodmyran, exportera "Alla produkter från leverantören" med 12 månaders data, och ladda upp .xlsx-filen här (dra in den eller klicka).<div class="ex">Kör du Shalin? Exportera Shalins produkter. Kodmyran hinner ofta inte få ut allt — därför laddar du fler kortare vyer i steg 2.</div></div>
+    </h3>
+    <p style="font-size:12px;color:#888;margin-bottom:1rem">Exportera "Alla produkter från leverantören" med 1 års data från Kodmyran. Ladda upp den här först.</p>
     <div class="upload-area" id="drop-zone" onclick="document.getElementById('fi').click()">
       <div style="font-size:40px;margin-bottom:10px">📊</div>
       <strong style="font-size:14px;display:block;margin-bottom:5px">Ladda upp 12-månadersfil</strong>
@@ -234,7 +236,9 @@ tr.removed td{opacity:.35}
   <div class="card">
     <div class="section-header">
       <div>
-        <h3 style="font-size:14px;font-weight:500">Aktiva inköpsorders <span class="saved-tag" id="po-saved-tag" style="display:none">● Sparat</span></h3>
+        <h3 style="font-size:14px;font-weight:500;position:relative">Aktiva inköpsorders <button class="help-btn" onclick="toggleTip('t-po')">?</button> <span class="saved-tag" id="po-saved-tag" style="display:none">● Sparat</span>
+          <div id="t-po" class="tooltip" style="font-weight:400"><strong>Vad gör jag här?</strong><br>Här ligger inköpsorder som redan är på väg till er. Systemet drar av dem så du inte dubbelbeställer. Fyll i <b>ETA</b> (när varan når ert lager) och <b>Dagar till hylla</b> (uppackning/inleverans) — då räknar systemet ut när den blir säljbar.<div class="ex">Har du inga order på väg? Då kan du hoppa vidare. Klicka "Auto-hämta från fil" för att fylla i order som fanns i din export.</div></div>
+        </h3>
         <p style="font-size:12px;color:#888;margin-top:3px">Sparas automatiskt. Levererade orders rensas vid nästa filimport.</p>
       </div>
       <div style="display:flex;gap:8px">
@@ -396,7 +400,9 @@ tr.removed td{opacity:.35}
   <div id="po-date-warning"></div>
   <div class="metric-row" id="metrics"></div>
   <div class="filter-bar">
-    <label id="otype-label">Ordertyp:</label>
+    <label id="otype-label" style="position:relative">Ordertyp: <button class="help-btn" onclick="toggleTip('t-otype')">?</button>
+      <div id="t-otype" class="tooltip" style="font-weight:400"><strong>Vad betyder typerna?</strong><br><b>Båt / Flyg-brygga</b> (Cheng, Container): container-order och flyg som fyller på tills den kommer.<br><b>Veckoköp</b> (Vecka): liten påfyllning denna vecka.<br><b>Utfasning</b> (Vecka): gammal svagsäljare som föreslås för slutförsäljning — köps ej.<div class="ex">Bocka ur en typ för att dölja den i listan.</div></div>
+    </label>
     <div class="cb-group" id="otype-group">
       <label class="cb-item" id="f-bat-wrap"><input type="checkbox" id="f-bat" checked onchange="renderTable()"> <span class="badge bb" id="f-bat-lbl">Båt</span></label>
       <label class="cb-item" id="f-air-wrap"><input type="checkbox" id="f-air" checked onchange="renderTable()"> <span class="badge ba" id="f-air-lbl">Flyg-brygga</span></label>
@@ -404,7 +410,9 @@ tr.removed td{opacity:.35}
     </div>
     <div class="filter-sep" id="fam-sep"></div>
     <span id="fam-filter-wrap">
-    <label>Familj:</label>
+    <label style="position:relative">Familj: <button class="help-btn" onclick="toggleTip('t-fam')">?</button>
+      <div id="t-fam" class="tooltip" style="font-weight:400"><strong>Inga rader syns?</strong><br>Du måste bocka i minst en produktfamilj här för att se förslagen. Filtret börjar tomt med flit. Bocka i alla för att se allt.<div class="ex">Vill du bara granska en kategori? Bocka i bara den.</div></div>
+    </label>
     <div class="cb-group">
       <label class="cb-item" id="ff-gen-wrap"><input type="checkbox" id="ff-gen" onchange="renderTable()"> <span id="ff-gen-lbl">Genuine</span></label>
       <label class="cb-item" id="ff-3c-wrap"><input type="checkbox" id="ff-3c" onchange="renderTable()"> <span id="ff-3c-lbl">3 Card</span></label>
@@ -470,7 +478,9 @@ tr.removed td{opacity:.35}
 <!-- V4: BEKRÄFTA -->
 <div id="v4" style="display:none">
   <div class="card">
-    <h3 style="font-size:15px;font-weight:500;margin-bottom:6px;color:#1D9E75">✅ Bekräfta orderförslaget</h3>
+    <h3 style="font-size:15px;font-weight:500;margin-bottom:6px;color:#1D9E75;position:relative">✅ Bekräfta orderförslaget <button class="help-btn" onclick="toggleTip('t-confirm')">?</button>
+      <div id="t-confirm" class="tooltip" style="font-weight:400;color:#333"><strong>Vad gör jag här?</strong><br>Sista koll innan export. Sammanfattningen visar totalen. Varningarna är saker värda att dubbelkolla — de stoppar dig inte, men läs dem. Bocka i rutan när du granskat, så låses exporten upp.<div class="ex">Ser en siffra fel ut? Gå tillbaka till Granska och justera eller ta bort raden.</div></div>
+    </h3>
     <p style="font-size:12px;color:#888;margin-bottom:1.5rem">Gå igenom sammanfattningen nedan innan du exporterar. Kontrollera varningar extra noga.</p>
     <div class="sum-grid" id="confirm-summary"></div>
     <div id="confirm-warnings"></div>
@@ -487,6 +497,10 @@ tr.removed td{opacity:.35}
 
 <!-- V5: EXPORTERA -->
 <div id="v5" style="display:none">
+  <div style="position:relative;margin-bottom:8px">
+    <span style="font-size:13px;font-weight:500">Exportera <button class="help-btn" onclick="toggleTip('t-export')">?</button></span>
+    <div id="t-export" class="tooltip" style="font-weight:400"><strong>Test eller skarp?</strong><br><b>Testexport</b>: en fil för att provköra i Kodmyran utan att låsa något — granska och makulera fritt.<br><b>Skarp order</b>: den riktiga beställningen du lägger. Använd test först, och skarp när du är nöjd.<div class="ex">Kör du Shalin Vecka? Här finns även "Exportera utfasningslista" — produkter att sätta på slutförsäljning.</div></div>
+  </div>
   <div class="exp-tabs">
     <button class="exp-tab active" id="tab-test" onclick="setExpTab('test')">🧪 Testexport</button>
     <button class="exp-tab" id="tab-sharp" onclick="setExpTab('sharp')">📨 Skarp order</button>
