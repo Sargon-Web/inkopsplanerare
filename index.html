@@ -411,7 +411,7 @@ tr.removed td{opacity:.35}
     <div class="filter-sep" id="fam-sep"></div>
     <span id="fam-filter-wrap">
     <label style="position:relative">Familj: <button class="help-btn" onclick="toggleTip('t-fam')">?</button>
-      <div id="t-fam" class="tooltip" style="font-weight:400"><strong>Inga rader syns?</strong><br>Du måste bocka i minst en produktfamilj här för att se förslagen. Filtret börjar tomt med flit. Bocka i alla för att se allt.<div class="ex">Vill du bara granska en kategori? Bocka i bara den.</div></div>
+      <div id="t-fam" class="tooltip" style="font-weight:400"><span id="t-fam-body"><strong>Inga rader syns?</strong><br>Du måste bocka i minst en produktfamilj här för att se förslagen.</span></div>
     </label>
     <div class="cb-group">
       <label class="cb-item" id="ff-gen-wrap"><input type="checkbox" id="ff-gen" onchange="renderTable()"> <span id="ff-gen-lbl">Genuine</span></label>
@@ -589,6 +589,7 @@ const SUPPLIERS={
     enabled:true,
     familyDetector:'shalin',   // Skydd (skal/fodral/skärmskydd) vs Tillbehör & Övrigt (gaming, väskor, laddare…)
     families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
+    defaultAllFamilies:true,   // Shalin beställs som helhet → förbocka alla familjer
     countIla:false,            // Til = tillgängligt (i lager − reserverat). Ila = inkl. reservationer = SAMMA lager, inte extra → räkna inte (dubbelräkning)
     modes:['bat','fly'],        // container + flygbrygga (fyller tills container)
     leadDefaults:{sea:120,air:52,fly:52,cont:120},
@@ -638,6 +639,7 @@ const SUPPLIERS={
     phaseOutMinArt:0,          // …OM artikelnr < gräns (sätts i UI, 12 mån+ gammal)
     families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
     familyDetector:'shalin',
+    defaultAllFamilies:true,   // Shalin beställs som helhet → förbocka alla familjer
     uiText:{
       modeLabel:'Orderläge för Shalin Vecka',
       modeDesc:'Veckovis påfyllning. Köp när lagret räcker < 30 dagar. Nya produkter trappas upp 3→5; åldrande svagsäljare fasas ut.',
@@ -787,8 +789,14 @@ function selectSup(key,btn){
   if(lbl)lbl.textContent=S().label;
   // Load this supplier's saved settings (or its defaults if first time)
   loadCfg();
-  // Family slots mean different things per supplier — clear on switch
-  ['ff-gen','ff-3c','ff-oth'].forEach(id=>{const el=document.getElementById(id);if(el)el.checked=false;});
+  // Family slots mean different things per supplier — reset on switch.
+  // Shalin (defaultAllFamilies) is ordered as a whole → pre-check all its
+  // families. Cheng starts empty (families are separate purchases).
+  const defs=S().families, allFam=S().defaultAllFamilies===true;
+  ['ff-gen','ff-3c','ff-oth'].forEach((id,i)=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.checked = allFam && Array.isArray(defs) && !!defs[i];
+  });
   renderSettingsUI();
   saveToStorage('inkop-active-sup',activeSup);
 }
@@ -1459,6 +1467,15 @@ function renderFamilyFilter(){
     if(defs[i]){w.style.display='';l.textContent=defs[i].label;}
     else{w.style.display='none';const cb=w.querySelector('input');if(cb)cb.checked=false;}
   });
+  // Dynamic help text: whole-order (Shalin) vs separate families (Cheng)
+  const body=document.getElementById('t-fam-body');
+  if(body){
+    if(S().defaultAllFamilies===true){
+      body.innerHTML=`<strong>Alla familjer är ibockade</strong><br>${S().label} beställs som en helhet — alla ${defs.map(f=>f.label).join(' + ')} är förbockade så du får med hela sortimentet. Vill du bara granska en kategori kan du bocka ur de andra tillfälligt, men bocka i alla igen innan du exporterar.`;
+    } else {
+      body.innerHTML=`<strong>Inga rader syns?</strong><br>Bocka i minst en produktfamilj för att se förslagen. Här jobbar du med familjerna var för sig — välj den du beställer just nu.`;
+    }
+  }
 }
 
 // PO numbers referenced by products but with no creditable date.
@@ -2320,6 +2337,9 @@ function init(){
     });
   }
   loadPOs();loadCfg();renderPOTable();calcContDate();renderSettingsUI();
+  // Pre-check families for suppliers ordered as a whole (Shalin)
+  {const defs=S().families, allFam=S().defaultAllFamilies===true;
+   ['ff-gen','ff-3c','ff-oth'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.checked=allFam&&Array.isArray(defs)&&!!defs[i];});}
   if(!loadFromStorage('inkop-seen')){startOnboard();saveToStorage('inkop-seen',true);}
 }
 init();
