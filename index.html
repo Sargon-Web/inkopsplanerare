@@ -153,7 +153,7 @@ tr.removed td{opacity:.35}
     <button class="sup-btn active" onclick="selectSup('cheng',this)">Cheng</button>
     <button class="sup-btn" onclick="selectSup('shalin_cont',this)">Shalin Container</button>
     <button class="sup-btn" onclick="selectSup('shalin_vecka',this)">Shalin Vecka</button>
-    <button class="sup-btn soon" title="Kommer snart">EU</button>
+    <button class="sup-btn" onclick="selectSup('eu',this)">EU</button>
     <button class="sup-btn soon" title="Kommer snart">Sverige</button>
   </div>
   <button class="btn btn-sm" onclick="openBlueprint()" style="margin-left:8px">📋 Regelverk</button>
@@ -655,21 +655,46 @@ const SUPPLIERS={
   },
   eu:{
     label:'EU — leverantörer',
-    enabled:false,
-    countIla:false,           // Til = säljbart (Ila = inkl. reservationer, dubbelräknar)
-    modes:['fly'],
-    leadDefaults:{sea:0,air:14,fly:14,cont:0},
-    classThresholds:{A:30,B:15,Cp:6,C:2},
-    emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
-    coverMonths:{A:{up:3,down:2,stable:3},B:2,Cp:{down:1,stable:2},C:0,D:0},
+    enabled:true,
+    countIla:false,            // Til = säljbart (kan vara negativt vid dropship)
+    modes:['eu'],              // eget EU-läge (negativt saldo driver inköp)
+    leadDefaults:{sea:0,air:8,fly:8,cont:0}, // ~7–9 dagar order→säljbar
+    euLead:8,
+    classThresholds:{A:30,B:15,Cp:10,C:2},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
-    safetyNet:{enabled:false},
-    minYearForBat:6
+    // ── EU dropship-trappa ──
+    negBuffer:3,               // negativt saldo → köp |saldo| + N buffert (−3 → 6)
+    step2MinM1:2,              // sålt N+ senaste månaden → köp step2Qty
+    step2Qty:3,                // …köp 3
+    step2bMinM1:3,             // sålt MER än N senaste månaden (>3) → 14 dagars täckning
+    step2bDaysCover:14,
+    provenM3:10,               // 10+ på 3 mån (eller 1 mån) → 30 dagars täckning
+    provenDaysCover:30,
+    phaseOutMaxYear:10,        // < N sålda/år → utfasningskandidat…
+    phaseOutMinArt:0,          // …OM artikelnr < gräns (sätts i UI)
+    families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
+    familyDetector:'shalin',
+    defaultAllFamilies:true,
+    uiText:{
+      modeLabel:'Orderläge för EU',
+      modeDesc:'Dropship som trappas upp. Negativt saldo (sålt utan lager) köps in direkt. Produkter som bevisar sig får täckning hemma.',
+      flyLabel:'Ledtid EU (dagar)',
+      minYearLabel:'Container-tröskel (ej relevant för EU)',
+      cards:[
+        {t:'Dropship', r:'Til 0, säljer knappt', d:'Köps ej<br>väntar tills minus'},
+        {t:'Sålt / minus', r:'Negativt saldo el. 2+/mån', d:'Täck minus +3<br>el. köp 3'},
+        {t:'Bevisad', r:'>3/mån → 14 d · 10+/3m → 30 d', d:'Täckning hemma<br>trappas upp'},
+        {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
+      ]
+    }
   }
 };
 let activeSup='cheng';
 let mergedFiles=[]; // names of extra export views merged into the 12m base
 function S(){return SUPPLIERS[activeSup]||SUPPLIERS.cheng;}
+// Vecka and EU share the same view logic (top-up flow, vecka/phaseout
+// order types, no container/boat/class columns). This helper flags both.
+function isWeekly(){const m=S().modes;return m&&(m[0]==='vecka'||m[0]==='eu');}
 
 // ── Onboarding ───────────────────────────────────────────────────
 const OB=[
@@ -752,12 +777,28 @@ function renderBlueprint(){
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
   ];
 
+  // ── EU ──
+  const eu=cfgFor('eu');
+  const euRows=[
+    ['Flöde','Dropship som trappas upp till lagervara'],
+    ['Negativt saldo (Til < 0)','Sålt utan lager → köp in (−saldo) + 3 buffert. T.ex. −3 → köp 6.'],
+    ['Til = 0, säljer knappt','Köps ej — ren dropship tills den går minus'],
+    ['Sålt 2–3 senaste månaden','Köp 3'],
+    ['Sålt > 3 senaste månaden','14 dagars täckning'],
+    ['Bevisad (10+ på 3 mån el. 1 mån)','30 dagars täckning'],
+    ['Ledtid EU',bpVal(eu.fly,'8')+' dagar (5–7 leverans + 1–2 inlev)'],
+    ['Leverantör slut / end-of-life','Sköts utanför verktyget: tas bort ur order hos leverantör, kommer tillbaka nästa förslag. Permanent EOL → slutförsäljning manuellt.'],
+    ['Utfasningsgräns (artikelnr)',bpVal(eu.artcut,'sätts per körning')],
+    ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
+    ['Lager som räknas','Til (säljbart, kan vara negativt). Ila räknas EJ.'],
+  ];
+
   let html='';
   html+=box('Cheng','Aktiv','#0F6E56',chengRows,'Skarpt validerad. Genuine + 3 Card körda med riktiga order.');
   html+=box('Shalin Container','Aktiv','#185FA5',contRows,'Verifierad 279/279 mot data.');
   html+=box('Shalin Vecka','Aktiv','#854F0B',veckaRows,'Verifierad: 503/505 köp, 1015/1015 utfasning.');
-  html+=box('EU — leverantörer','Ej byggd','#bbb',null,'Regelverk ej fastställt. Byggs efter samma mönster när det blir aktuellt.');
-  html+=box('Sverige','Ej byggd','#bbb',null,'Regelverk ej fastställt. Byggs efter samma mönster när det blir aktuellt.');
+  html+=box('EU — leverantörer','Aktiv','#6D28D9',euRows,'Dropship-modell. Negativt saldo driver inköp.');
+  html+=box('Sverige','Ej byggd','#bbb',null,'Regelverk ej fastställt. Vissa Sverige-produkter dropshippas som EU — byggs efter samma mönster.');
   document.getElementById('blueprint-content').innerHTML=html;
 }
 function openBlueprint(){renderBlueprint();document.getElementById('blueprint-overlay').style.display='block';document.body.style.overflow='hidden';}
@@ -812,8 +853,8 @@ function applySupDefaults(){
   const minY=S().minYearForContainer!=null?S().minYearForContainer
             :(S().veckaContainerThreshold!=null?S().veckaContainerThreshold:S().minYearForBat);
   set('s-miny',minY);
-  // Vecka: article-number phase-out cutoff starts blank (user sets it each run)
-  if(S().modes&&S().modes[0]==='vecka'){const el=document.getElementById('s-artcut');if(el&&!el.value)el.value=0;}
+  // Vecka/EU: article-number phase-out cutoff starts blank (user sets it each run)
+  if(isWeekly()){const el=document.getElementById('s-artcut');if(el&&!el.value)el.value=0;}
   // mode: fall back to supplier's first allowed mode
   if(!S().modes.includes(orderMode))setMode(S().modes[0]);
   renderSettingsUI();
@@ -833,7 +874,7 @@ function renderSettingsUI(){
   setText('miny-label',t.minYearLabel);
 
   // ── Vecka mode: hide all container-only fields, show only what matters ──
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
   const show=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';};
   // Container-only blocks
   show('mode-block',!isVecka);
@@ -1521,6 +1562,10 @@ function runCalc(){
     runVeckaCalc(cfg,today);
     return;
   }
+  if(S().modes&&S().modes[0]==='eu'){
+    runEuCalc(cfg,today);
+    return;
+  }
 
   for(const p of products){
     if(p.y1===0&&p.m3===0&&p.m1===0)continue;
@@ -1717,6 +1762,97 @@ function runVeckaCalc(cfg,today){
   goTo(3);
 }
 
+// ── EU calculation (dropship that steps up) ──────────────────────
+// Negative Til = sold without stock → must be ordered. Rules:
+//   • Til < 0        → buy |Til| + negBuffer (−3 → 6, lands on +3)
+//   • Til = 0, weak  → buy nothing (pure dropship until it goes minus)
+//   • sold 2–3 /mån  → buy 3
+//   • sold >3 /mån   → 14-day coverage
+//   • sold 10+ /3m   → 30-day coverage
+//   • old + weak     → phase out (Slutförsäljning)
+// Reuses mkVeckaProp — same proposal shape and otypes (vecka/phaseout).
+function runEuCalc(cfg,today){
+  const S_=S();
+  const artCutoff=parseInt(gv('s-artcut'))||0;
+  const negBuffer=S_.negBuffer;
+  const step2MinM1=S_.step2MinM1, step2Qty=S_.step2Qty;
+  const step2bMinM1=S_.step2bMinM1, step2bCover=S_.step2bDaysCover;
+  const provenM3=S_.provenM3, provenCover=S_.provenDaysCover;
+  const phaseMaxYear=S_.phaseOutMaxYear;
+
+  for(const p of products){
+    const til=p.lager; // Til (can be negative)
+    // Skip rows with no data AND no demand signal (nothing to decide)
+    if(p.y1===0&&p.m3===0&&p.m1===0&&til>=0)continue;
+
+    const a3=p.m3/3;
+    const trend=getTrend(p,cfg);
+    const demandMonthly=getDemand(p,trend);
+    const daily=demandMonthly/30;
+    const incoming=(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0);
+    const onHand=til+incoming;
+    const daysLeft = daily>0 ? Math.round(Math.max(0,onHand)/daily) : (onHand<0?0:999);
+
+    // ── Phase-out: old (art below cutoff) AND weak (<phaseMaxYear/year) ──
+    const isOld = artCutoff>0 && p.artNr < artCutoff;
+    const isWeak = p.y1 < phaseMaxYear;
+    if(isOld && isWeak){
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',daysLeft,{phaseOut:true,eu:true}));
+      continue;
+    }
+
+    let qty=0, mode='eu';
+
+    // ── 1) Negative saldo → cover the shortfall + buffer ──
+    if(til<0){
+      const need=(-til)+negBuffer - incoming; // incoming already on the way counts
+      if(need>0) qty=need; // exact units (no rnd5 — EU orders precise small qty)
+      mode='neg';
+    }
+    // ── 2) Proven (10+ on 3 months OR 1 month) → 30-day coverage ──
+    else if(p.m3>=provenM3 || p.m1>=provenM3){
+      const target=Math.ceil(daily*provenCover);
+      const need=target-onHand;
+      if(need>0) qty=need;
+      mode='proven';
+    }
+    // ── 3) Strong recent month (>3) → 14-day coverage ──
+    else if(p.m1>step2bMinM1){
+      const target=Math.ceil(daily*step2bCover);
+      const need=target-onHand;
+      if(need>0) qty=need;
+      mode='cover14';
+    }
+    // ── 4) Started selling (2–3 last month) → buy 3 ──
+    else if(p.m1>=step2MinM1){
+      qty = step2Qty - Math.max(0,onHand); // top up toward step2Qty
+      if(qty<0)qty=0;
+      mode='step3';
+      if(incoming>=step2Qty) qty=0;
+    }
+    // ── 5) Til=0, weak seller → buy nothing (pure dropship) ──
+    else {
+      continue;
+    }
+
+    if(qty<=0)continue;
+    proposals.push(mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,{eu:true}));
+  }
+  proposals.forEach(p=>{p.warns=getEuWarnings(p);});
+  renderPODateWarning();
+  goTo(3);
+}
+
+function getEuWarnings(p){
+  const w=[];
+  if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
+  else if(p.veckaMode==='neg') w.push(`Negativt saldo (${p.lager}) — dropship sålt utan lager. Köp in ${p.uBat} (täcker minus + buffert).`);
+  else if(p.veckaMode==='proven') w.push(`Bevisad (10+ sålda) — 30 dagars täckning.`);
+  else if(p.veckaMode==='cover14') w.push(`Stark månad (>3 sålda) — 14 dagars täckning.`);
+  if(p.poBatTotal>0) w.push(`${p.poBatTotal} st redan på väg.`);
+  return w;
+}
+
 // Build a proposal object compatible with the Granska/Bekräfta views.
 function mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,extra){
   const lastRunData=getLastRun();
@@ -1844,7 +1980,7 @@ function klassColor(k){return{A:'#0F6E56',B:'#185FA5',Cp:'#854F0B',C:'#888',D:'#
 // Adapt the Granska filter bar to the active supplier.
 // Vecka: order-type slots become Veckoköp/Utfasning, hide class + crit filters.
 function renderFilterBar(){
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
   const show=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';};
   const setText=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   if(isVecka){
@@ -1868,7 +2004,7 @@ function renderFilterBar(){
 function renderMetrics(){
   const act=proposals.filter((_,i)=>!removedRows.has(i));
   const warn=act.filter(p=>p.warns&&p.warns.length>0).length;
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
 
   if(isVecka){
     const buys=act.filter(p=>p.otype==='vecka');
@@ -1910,7 +2046,7 @@ function renderTable(){
   let rows=[...proposals.entries()].map(([i,p])=>({i,p})).filter(({i,p})=>{
     if(removedRows.has(i))return false;
     const t=p.otype;
-    const isVecka=S().modes&&S().modes[0]==='vecka';
+    const isVecka=isWeekly();
     const typeOk=isVecka
       ? ((fBat&&t==='vecka')||(fAir&&t==='phaseout'))
       : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
@@ -1989,7 +2125,7 @@ function removeReviewRow(i){if(removedRows.has(i))removedRows.delete(i);else rem
 // ── Confirm ──────────────────────────────────────────────────────
 function renderConfirm(){
   const act=getFilteredRows();
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
   if(isVecka){
     const buys=act.filter(p=>p.otype==='vecka');
     const phase=act.filter(p=>p.otype==='phaseout');
@@ -2034,7 +2170,7 @@ function updateConfirmBtn(){
 // ── Export ───────────────────────────────────────────────────────
 function buildPreview(type){
   const act=proposals.filter((_,i)=>!removedRows.has(i));
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
   if(isVecka){
     const buys=act.filter(p=>p.otype==='vecka'&&(p.uBat||0)>0);
     let h=`<div style="margin-top:1rem;border:1px solid #e5e5e2;border-radius:10px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:11px">
@@ -2108,7 +2244,7 @@ function getFilteredRows(){
   return proposals.filter((p,i)=>{
     if(removedRows.has(i))return false;
     const t=p.otype;
-    const isVecka=S().modes&&S().modes[0]==='vecka';
+    const isVecka=isWeekly();
     const typeOk=isVecka
       ? ((fBat&&t==='vecka')||(fAir&&t==='phaseout'))
       : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
@@ -2126,7 +2262,7 @@ function getFilteredRows(){
 }
 
 function doExport(type){
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
   const act=getFilteredRows();
   if(act.length===0){alert('Inga rader att exportera. Gå tillbaka och beräkna ett orderförslag.');return;}
   // Save this run for future comparison
@@ -2190,7 +2326,7 @@ function downloadCsv(csv,fname){
 // import into Kodmyran. Uses ALL phase-outs in the current family filter,
 // regardless of the order-type checkboxes.
 function exportPhaseOut(){
-  const isVecka=S().modes&&S().modes[0]==='vecka';
+  const isVecka=isWeekly();
   if(!isVecka){alert('Utfasning finns bara för Shalin Vecka.');return;}
   const selFam=famSelFromSlots(
     document.getElementById('ff-gen').checked,
@@ -2315,7 +2451,7 @@ function goTo(n){
     if(infoEl)infoEl.textContent=`Exporten innehåller ${filtered.length} rader (${famStr}) — samma som visas i granskningsvyn med ditt aktiva filter.`;
     // Phase-out export button only for Vecka
     const poBtn=document.getElementById('phaseout-btn');
-    if(poBtn)poBtn.style.display=(S().modes&&S().modes[0]==='vecka')?'':'none';
+    if(poBtn)poBtn.style.display=isWeekly()?'':'none';
   }
   for(let i=0;i<6;i++){
     document.getElementById('v'+i).style.display=i===n?'':'none';
