@@ -570,6 +570,8 @@ const SUPPLIERS={
     cAirQty:5,            // C: flyg-batch när tom (ingen båt)
     airBridgeMinMonths:1, // flyg-brygga bara om gapet ≥ N månaders försäljning
     airBridgeMinUnits:5,  // …och minst N st (sub-5 hål inte värt en flygorder; matchar rnd5-minimum)
+    phaseOutMaxYear:10,   // utfasning: sålt < N/år OCH artikelnr < gräns → slutförsäljning
+    phaseOutMinArt:0,
     minYearForBat:15,
     uiText:{
       modeLabel:'Orderläge för Cheng',
@@ -606,6 +608,8 @@ const SUPPLIERS={
     airBridgeMinMonths:1,
     airBridgeMinUnits:5,
     minYearForBat:25,
+    phaseOutMaxYear:10,   // utfasning: sålt < N/år OCH artikelnr < gräns → slutförsäljning
+    phaseOutMinArt:0,
     uiText:{
       modeLabel:'Orderläge för Shalin Container',
       modeDesc:'Container 4–5 ggr/år. Bara produkter som sålt 25+/år köps via container, med flyg-brygga som fyller tills containern kommer.',
@@ -745,6 +749,7 @@ function renderBlueprint(){
     ['Båt-ledtid',bpVal(ch.sea,'155')+' dagar'],
     ['Flyg-ledtid (Genuine/3Card)',bpVal(ch.air,'52')+' dagar'],
     ['Flyg-brygga','Läggs bara om lagret tar slut före containern, och gapet är ≥1 mån försäljning och ≥5 st (eller om produkten helt tar slut)'],
+    ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
   ];
 
@@ -758,6 +763,8 @@ function renderBlueprint(){
     ['Container-datum',bpVal(sc.cont,'sätts per körning')],
     ['Flyg-ledtid',bpVal(sc.air,'52')+' dagar'],
     ['Flyg-brygga','Fyller på tills containern är säljbar'],
+    ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja. Ger en utfasningslista från samma data.'],
+    ['Utfasningsgräns (artikelnr)',bpVal(sc.artcut,'sätts per körning')],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
     ['Produktfamiljer','Skydd (skal/fodral/skärmskydd) · Tillbehör & Övrigt'],
   ];
@@ -886,7 +893,7 @@ function renderSettingsUI(){
   show('fw-tup',!isVecka);
   show('fw-tdn',!isVecka);
   // Vecka-only block
-  show('fw-vecka-artcut',isVecka);
+  show('fw-vecka-artcut',isVecka || S().phaseOutMaxYear!=null);
   // "Ledtid Vecka" reuses the s-fly field; relabel and keep it visible
   if(isVecka){
     setText('fly-label','Ledtid Vecka (dagar)');
@@ -1590,6 +1597,16 @@ function runCalc(){
     const klass=classify(p);
     const coverMonths=getCoverMonths(klass,trend);
 
+    // ── Utfasning (Cheng, Shalin Container): old + weak → slutförsäljning.
+    // Checked BEFORE D-skip and the container gate so weak sellers still
+    // surface as phase-out candidates. Needs an article cutoff set (s-artcut).
+    const euArtCut=parseInt(gv('s-artcut'))||0;
+    if(S().phaseOutMaxYear!=null && euArtCut>0 && p.artNr<euArtCut && p.y1<S().phaseOutMaxYear){
+      const dlPhase=calcDaysLeftStock(p.lager,daily);
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',dlPhase,{phaseOut:true}));
+      continue;
+    }
+
     // Skip D completely
     if(klass==='D')continue;
 
@@ -2066,7 +2083,7 @@ function renderTable(){
     const isVecka=isWeekly();
     const typeOk=isVecka
       ? ((fBat&&t==='vecka')||(fAir&&t==='phaseout'))
-      : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
+      : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly')||t==='phaseout');
     if(!typeOk)return false;
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
     const famOk=!selFam||!!selFam[getFamily(p)];
@@ -2264,7 +2281,7 @@ function getFilteredRows(){
     const isVecka=isWeekly();
     const typeOk=isVecka
       ? ((fBat&&t==='vecka')||(fAir&&t==='phaseout'))
-      : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly'));
+      : ((fBat&&t.includes('bat'))||(fAir&&t.includes('air'))||(fFly&&t==='fly')||t==='phaseout');
     if(!typeOk)return false;
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
     const famOk=!selFam||!!selFam[getFamily(p)];
@@ -2319,6 +2336,7 @@ function doExport(type){
     'Art.nr;Lev.art.nr;Produkt;Bat-order;Flyg-brygga;Flyg-order;Dagar kvar;Enhetspris'
   ];
   act.forEach(p=>{
+    if(p.otype==='phaseout')return; // phase-outs go in the separate utfasning export
     const dl=p.daysLeft>=999?'':p.daysLeft;
     lines.push(`${p.artNr};${(p.levArt||'').replace(/;/g,' ')};${p.produkt.replace(/;/g,' ')};${p.uBat||0};${p.uAir||0};${p.uFly||0};${dl};${p.enhet||''}`);
   });
@@ -2343,8 +2361,6 @@ function downloadCsv(csv,fname){
 // import into Kodmyran. Uses ALL phase-outs in the current family filter,
 // regardless of the order-type checkboxes.
 function exportPhaseOut(){
-  const isVecka=isWeekly();
-  if(!isVecka){alert('Utfasning finns bara för Shalin Vecka.');return;}
   const selFam=famSelFromSlots(
     document.getElementById('ff-gen').checked,
     document.getElementById('ff-3c').checked,
@@ -2468,7 +2484,8 @@ function goTo(n){
     if(infoEl)infoEl.textContent=`Exporten innehåller ${filtered.length} rader (${famStr}) — samma som visas i granskningsvyn med ditt aktiva filter.`;
     // Phase-out export button only for Vecka
     const poBtn=document.getElementById('phaseout-btn');
-    if(poBtn)poBtn.style.display=isWeekly()?'':'none';
+    const hasPhaseOut=proposals.some((p,i)=>!removedRows.has(i)&&p.otype==='phaseout');
+    if(poBtn)poBtn.style.display=(isWeekly()||hasPhaseOut)?'':'none';
   }
   for(let i=0;i<6;i++){
     document.getElementById('v'+i).style.display=i===n?'':'none';
