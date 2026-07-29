@@ -781,11 +781,12 @@ function renderBlueprint(){
   const eu=cfgFor('eu');
   const euRows=[
     ['Flöde','Dropship som trappas upp till lagervara'],
-    ['Negativt saldo (Til < 0)','Sålt utan lager → köp in (−saldo) + 3 buffert. T.ex. −3 → köp 6.'],
-    ['Til = 0, säljer knappt','Köps ej — ren dropship tills den går minus'],
-    ['Sålt 2–3 senaste månaden','Köp 3'],
-    ['Sålt > 3 senaste månaden','14 dagars täckning'],
-    ['Bevisad (10+ på 3 mån el. 1 mån)','30 dagars täckning'],
+    ['Negativt saldo (Til < 0)','Sålt utan lager. Räknar in det som är på väg. Kvarstår minus → täck det + 3 buffert. Täcker påväg redan minuset → köp 0.'],
+    ['Til = 0, säljer knappt (<2/mån)','Köps ej — ren dropship tills den går minus'],
+    ['Börjar sälja (2/mån)','Köp 3'],
+    ['Säljer (3+/mån)','30 dagars täckning, golv 3'],
+    ['Stark säljare (6+/mån)','30 dagars täckning, golv 5'],
+    ['Avrundning','Närmaste standardsteg (1/3/5/10/15/20/25/30/40/50). T.ex. behov 6–7 → 5, 8–9 → 10.'],
     ['Ledtid EU',bpVal(eu.fly,'8')+' dagar (5–7 leverans + 1–2 inlev)'],
     ['Leverantör slut / end-of-life','Sköts utanför verktyget: tas bort ur order hos leverantör, kommer tillbaka nästa förslag. Permanent EOL → slutförsäljning manuellt.'],
     ['Utfasningsgräns (artikelnr)',bpVal(eu.artcut,'sätts per körning')],
@@ -1415,6 +1416,19 @@ function rnd5(n){
   return Math.ceil(n/50)*50;
 }
 
+// EU rounds to the NEAREST standard step (6→5, 8→10), not always up.
+function rndNearest(n){
+  n=Math.round(n);
+  if(n<=0)return 0;
+  const s=[1,3,5,10,15,20,25,30,40,50,60,70,80,90,100];
+  let best=s[0];
+  for(const v of s){
+    if(Math.abs(v-n)<Math.abs(best-n)||(Math.abs(v-n)===Math.abs(best-n)&&v>best))best=v;
+  }
+  if(n>100)return Math.round(n/50)*50;
+  return best;
+}
+
 function getWarnings(p){
   const w=[];
   const avg=p.demandMonthly;
@@ -1774,15 +1788,16 @@ function runVeckaCalc(cfg,today){
 function runEuCalc(cfg,today){
   const S_=S();
   const artCutoff=parseInt(gv('s-artcut'))||0;
-  const negBuffer=S_.negBuffer;
-  const step2MinM1=S_.step2MinM1, step2Qty=S_.step2Qty;
-  const step2bMinM1=S_.step2bMinM1, step2bCover=S_.step2bDaysCover;
-  const provenM3=S_.provenM3, provenCover=S_.provenDaysCover;
+  const negBuffer=S_.negBuffer;              // 3
+  const startMinM1=S_.step2MinM1;            // 2 → köp 3
+  const startQty=S_.step2Qty;               // 3
+  const activeMinM1=S_.step2bMinM1;         // 3 → 30-dagars täckning, golv 3
+  const strongMinM1=6;                      // ≥6 → golv 5
+  const coverDays=S_.provenDaysCover;       // 30
   const phaseMaxYear=S_.phaseOutMaxYear;
 
   for(const p of products){
     const til=p.lager; // Til (can be negative)
-    // Skip rows with no data AND no demand signal (nothing to decide)
     if(p.y1===0&&p.m3===0&&p.m1===0&&til>=0)continue;
 
     const a3=p.m3/3;
@@ -1795,43 +1810,45 @@ function runEuCalc(cfg,today){
 
     // ── Phase-out: old (art below cutoff) AND weak (<phaseMaxYear/year) ──
     const isOld = artCutoff>0 && p.artNr < artCutoff;
-    const isWeak = p.y1 < phaseMaxYear;
-    if(isOld && isWeak){
+    if(isOld && p.y1 < phaseMaxYear){
       proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',daysLeft,{phaseOut:true,eu:true}));
       continue;
     }
 
     let qty=0, mode='eu';
 
-    // ── 1) Negative saldo → cover the shortfall + buffer ──
     if(til<0){
-      const need=(-til)+negBuffer - incoming; // incoming already on the way counts
-      if(need>0) qty=need; // exact units (no rnd5 — EU orders precise small qty)
+      // ── Negative saldo: sold without stock. Everything incoming counts.
+      // If what's on the way already brings us to a healthy position,
+      // don't chase the last unit — wait. Only buy when the 30-day need
+      // after incoming is a meaningful quantity.
+      if(onHand<0){
+        // genuine remaining shortfall after incoming → cover it + buffer
+        qty=rndNearest((-onHand)+negBuffer);
+      } else {
+        // incoming already cleared the minus; only top up if a real need
+        const need = daily*coverDays - onHand;
+        qty = need>=3 ? rndNearest(need) : 0; // don't chase sub-3 smulor
+      }
       mode='neg';
     }
-    // ── 2) Proven (10+ on 3 months OR 1 month) → 30-day coverage ──
-    else if(p.m3>=provenM3 || p.m1>=provenM3){
-      const target=Math.ceil(daily*provenCover);
-      const need=target-onHand;
-      if(need>0) qty=need;
-      mode='proven';
+    else if(p.m1>=activeMinM1){
+      // ── Active seller (≥3 last month): 30-day coverage, rounded, floor 3/5 ──
+      const need=daily*coverDays-onHand;
+      qty=rndNearest(need);
+      const floor = p.m1>=strongMinM1 ? 5 : 3; // strong sellers floor at 5
+      if(qty<floor) qty=floor;
+      mode = p.m3>=10||p.m1>=10 ? 'proven' : 'active';
     }
-    // ── 3) Strong recent month (>3) → 14-day coverage ──
-    else if(p.m1>step2bMinM1){
-      const target=Math.ceil(daily*step2bCover);
-      const need=target-onHand;
-      if(need>0) qty=need;
-      mode='cover14';
-    }
-    // ── 4) Started selling (2–3 last month) → buy 3 ──
-    else if(p.m1>=step2MinM1){
-      qty = step2Qty - Math.max(0,onHand); // top up toward step2Qty
-      if(qty<0)qty=0;
+    else if(p.m1>=startMinM1){
+      // ── Starting to sell (2 last month): buy 3, top up toward it ──
+      qty = rndNearest(startQty - Math.max(0,onHand));
+      if(incoming>=startQty) qty=0;
+      else if(qty>0&&qty<startQty) qty=startQty;
       mode='step3';
-      if(incoming>=step2Qty) qty=0;
     }
-    // ── 5) Til=0, weak seller → buy nothing (pure dropship) ──
     else {
+      // ── Til=0/positive, weak seller → dropship, buy nothing ──
       continue;
     }
 
@@ -1846,9 +1863,9 @@ function runEuCalc(cfg,today){
 function getEuWarnings(p){
   const w=[];
   if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
-  else if(p.veckaMode==='neg') w.push(`Negativt saldo (${p.lager}) — dropship sålt utan lager. Köp in ${p.uBat} (täcker minus + buffert).`);
-  else if(p.veckaMode==='proven') w.push(`Bevisad (10+ sålda) — 30 dagars täckning.`);
-  else if(p.veckaMode==='cover14') w.push(`Stark månad (>3 sålda) — 14 dagars täckning.`);
+  else if(p.veckaMode==='neg') w.push(`Negativt saldo (${p.lager}) — dropship sålt utan lager. Köp ${p.uBat} (täcker minus + buffert).`);
+  else if(p.veckaMode==='proven') w.push(`Bevisad säljare — 30 dagars täckning.`);
+  else if(p.veckaMode==='active') w.push(`Säljer bra (${p.m1}/mån) — 30 dagars täckning.`);
   if(p.poBatTotal>0) w.push(`${p.poBatTotal} st redan på väg.`);
   return w;
 }
