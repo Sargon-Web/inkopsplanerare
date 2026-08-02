@@ -154,7 +154,7 @@ tr.removed td{opacity:.35}
     <button class="sup-btn" onclick="selectSup('shalin_cont',this)">Shalin Container</button>
     <button class="sup-btn" onclick="selectSup('shalin_vecka',this)">Shalin Vecka</button>
     <button class="sup-btn" onclick="selectSup('eu',this)">EU</button>
-    <button class="sup-btn soon" title="Kommer snart">Sverige</button>
+    <button class="sup-btn" onclick="selectSup('sverige',this)">Sverige</button>
   </div>
   <button class="btn btn-sm" onclick="openBlueprint()" style="margin-left:8px">📋 Regelverk</button>
   <button class="btn btn-sm" onclick="startOnboard()" style="margin-left:8px">? Guide</button>
@@ -691,6 +691,41 @@ const SUPPLIERS={
         {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
       ]
     }
+  },
+  sverige:{
+    label:'Sverige — leverantörer',
+    enabled:true,
+    countIla:false,            // Til = säljbart (kan vara negativt vid dropship)
+    modes:['eu'],              // återanvänder EU-motorn (runEuCalc) — identiskt flöde
+    leadDefaults:{sea:0,air:4,fly:4,cont:0}, // inhemskt: ~3–4 dagar order→säljbar
+    euLead:4,
+    classThresholds:{A:30,B:15,Cp:10,C:2},
+    demandWeights:{m1:0.5,m3:0.3,y1:0.2},
+    // ── Sverige dropship-trappa (identisk med EU) ──
+    negBuffer:3,               // negativt saldo → köp |saldo| + buffert
+    step2MinM1:2,              // sålt 2+ senaste månaden → köp step2Qty
+    step2Qty:3,                // …köp 3
+    step2bMinM1:3,             // sålt >3 senaste månaden → aktiv säljare (30 dagars täckning)
+    step2bDaysCover:14,
+    provenM3:10,               // 10+ på 3 mån (eller 1 mån) → 30 dagars täckning
+    provenDaysCover:30,
+    phaseOutMaxYear:10,        // < N sålda/år → utfasningskandidat…
+    phaseOutMinArt:0,          // …OM artikelnr < gräns (sätts i UI)
+    families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
+    familyDetector:'shalin',
+    defaultAllFamilies:true,
+    uiText:{
+      modeLabel:'Orderläge för Sverige',
+      modeDesc:'Dropship som trappas upp. Negativt saldo (sålt utan lager) köps in direkt. Produkter som bevisar sig får täckning hemma. Snabb inhemsk ledtid.',
+      flyLabel:'Ledtid Sverige (dagar)',
+      minYearLabel:'Container-tröskel (ej relevant för Sverige)',
+      cards:[
+        {t:'Dropship', r:'Til 0, säljer knappt', d:'Köps ej<br>väntar tills minus'},
+        {t:'Sålt / minus', r:'Negativt saldo el. 2+/mån', d:'Täck minus +3<br>el. köp 3'},
+        {t:'Bevisad', r:'>3/mån → 14 d · 10+/3m → 30 d', d:'Täckning hemma<br>trappas upp'},
+        {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
+      ]
+    }
   }
 };
 let activeSup='cheng';
@@ -801,12 +836,30 @@ function renderBlueprint(){
     ['Lager som räknas','Til (säljbart, kan vara negativt). Ila räknas EJ.'],
   ];
 
+  // ── Sverige ──
+  const se=cfgFor('sverige');
+  const sverigeRows=[
+    ['Flöde','Dropship som trappas upp till lagervara (samma motor som EU)'],
+    ['Negativt saldo (Til < 0)','Sålt utan lager. Räknar in det som är på väg. Kvarstår minus → täck det + 3 buffert. Täcker påväg redan minuset → köp 0.'],
+    ['Til = 0, säljer knappt (<2/mån)','Köps ej — ren dropship tills den går minus'],
+    ['Börjar sälja (2/mån)','Köp 3'],
+    ['Säljer (3+/mån)','30 dagars täckning, golv 3'],
+    ['Stark säljare (6+/mån)','30 dagars täckning, golv 5'],
+    ['Avrundning','Närmaste standardsteg (1/3/5/10/15/20/25/30/40/50). T.ex. behov 6–7 → 5, 8–9 → 10.'],
+    ['Ledtid Sverige',bpVal(se.fly,'4')+' dagar (inhemsk, snabb påfyllning)'],
+    ['Produktfamiljer','Skydd, Tillbehör & Övrigt (förbockas — beställs som helhet)'],
+    ['Leverantör slut / end-of-life','Sköts utanför verktyget: tas bort ur order hos leverantör, kommer tillbaka nästa förslag. Permanent EOL → slutförsäljning manuellt.'],
+    ['Utfasningsgräns (artikelnr)',bpVal(se.artcut,'sätts per körning')],
+    ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
+    ['Lager som räknas','Til (säljbart, kan vara negativt). Ila räknas EJ.'],
+  ];
+
   let html='';
   html+=box('Cheng','Aktiv','#0F6E56',chengRows,'Skarpt validerad. Genuine + 3 Card körda med riktiga order.');
   html+=box('Shalin Container','Aktiv','#185FA5',contRows,'Verifierad 279/279 mot data.');
   html+=box('Shalin Vecka','Aktiv','#854F0B',veckaRows,'Verifierad: 503/505 köp, 1015/1015 utfasning.');
   html+=box('EU — leverantörer','Aktiv','#6D28D9',euRows,'Dropship-modell. Negativt saldo driver inköp.');
-  html+=box('Sverige','Ej byggd','#bbb',null,'Regelverk ej fastställt. Vissa Sverige-produkter dropshippas som EU — byggs efter samma mönster.');
+  html+=box('Sverige — leverantörer','Aktiv','#0E7490',sverigeRows,'Dropship-modell (samma motor som EU). Negativt saldo driver inköp. Snabb inhemsk ledtid.');
   document.getElementById('blueprint-content').innerHTML=html;
 }
 function openBlueprint(){renderBlueprint();document.getElementById('blueprint-overlay').style.display='block';document.body.style.overflow='hidden';}
@@ -894,10 +947,10 @@ function renderSettingsUI(){
   show('fw-tdn',!isVecka);
   // Vecka-only block
   show('fw-vecka-artcut',isVecka || S().phaseOutMaxYear!=null);
-  // "Ledtid Vecka" reuses the s-fly field; relabel and keep it visible
+  // Weekly modes (Vecka/EU/Sverige) reuse the s-fly field; keep it visible
+  // and label it per the active supplier's own uiText (was hardcoded "Vecka").
   if(isVecka){
-    setText('fly-label','Ledtid Vecka (dagar)');
-    const cardEl=document.getElementById('class-cards');
+    setText('fly-label',t.flyLabel);
   }
 
   const cardsEl=document.getElementById('class-cards');
