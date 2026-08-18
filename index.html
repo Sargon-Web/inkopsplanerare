@@ -154,7 +154,7 @@ tr.removed td{opacity:.35}
     <button class="sup-btn" onclick="selectSup('shalin_cont',this)">Shalin Container</button>
     <button class="sup-btn" onclick="selectSup('shalin_vecka',this)">Shalin Vecka</button>
     <button class="sup-btn" onclick="selectSup('eu',this)">EU</button>
-    <button class="sup-btn" onclick="selectSup('sverige',this)">Sverige</button>
+    <button class="sup-btn soon" title="Kommer snart">Sverige</button>
   </div>
   <button class="btn btn-sm" onclick="openBlueprint()" style="margin-left:8px">📋 Regelverk</button>
   <button class="btn btn-sm" onclick="startOnboard()" style="margin-left:8px">? Guide</button>
@@ -327,6 +327,11 @@ tr.removed td{opacity:.35}
         <label>Nästa container anländer (säljbar hos er) <button class="help-btn" onclick="toggleTip('t-cont')">?</button></label>
         <input type="date" id="s-cont" min="2024-01-01" max="2030-12-31" onchange="saveCfg()">
         <div id="t-cont" class="tooltip"><strong>Nästa container-datum</strong><br>Datumet du kan börja sälja — ETA + inleveranstid. Krockar inte med båt-ledtiden.<div class="ex">Container anländer hamn 1 okt · 14 dagar inlev → skriv 2026-10-15</div></div>
+      </div>
+      <div class="fi" style="position:relative" id="fw-postcont">
+        <label>Räkna in inkommande order som landar inom X dagar efter container <button class="help-btn" onclick="toggleTip('t-postcont')">?</button></label>
+        <input type="number" id="s-postcont" value="14" min="0" max="60" onchange="saveCfg()">
+        <div id="t-postcont" class="tooltip"><strong>Order strax efter container</strong><br>En inkommande order som blir säljbar kort efter container-datumet finns i praktiken redan på plats för perioden. Detta fält säger hur många dagar efter container en sådan order ändå ska räknas som befintligt lager, så att förslaget inte blåses upp.<div class="ex">Container 22 okt, fält = 14 → en order säljbar 23 okt räknas in. 0 = endast order t.o.m. container-dagen (striktast).</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-sea">
         <label>Båt-ledtid till hylla (dagar) <button class="help-btn" onclick="toggleTip('t-sea')">?</button></label>
@@ -691,41 +696,6 @@ const SUPPLIERS={
         {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
       ]
     }
-  },
-  sverige:{
-    label:'Sverige — leverantörer',
-    enabled:true,
-    countIla:false,            // Til = säljbart (kan vara negativt vid dropship)
-    modes:['eu'],              // återanvänder EU-motorn (runEuCalc) — identiskt flöde
-    leadDefaults:{sea:0,air:4,fly:4,cont:0}, // inhemskt: ~3–4 dagar order→säljbar
-    euLead:4,
-    classThresholds:{A:30,B:15,Cp:10,C:2},
-    demandWeights:{m1:0.5,m3:0.3,y1:0.2},
-    // ── Sverige dropship-trappa (identisk med EU) ──
-    negBuffer:3,               // negativt saldo → köp |saldo| + buffert
-    step2MinM1:2,              // sålt 2+ senaste månaden → köp step2Qty
-    step2Qty:3,                // …köp 3
-    step2bMinM1:3,             // sålt >3 senaste månaden → aktiv säljare (30 dagars täckning)
-    step2bDaysCover:14,
-    provenM3:10,               // 10+ på 3 mån (eller 1 mån) → 30 dagars täckning
-    provenDaysCover:30,
-    phaseOutMaxYear:10,        // < N sålda/år → utfasningskandidat…
-    phaseOutMinArt:0,          // …OM artikelnr < gräns (sätts i UI)
-    families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
-    familyDetector:'shalin',
-    defaultAllFamilies:true,
-    uiText:{
-      modeLabel:'Orderläge för Sverige',
-      modeDesc:'Dropship som trappas upp. Negativt saldo (sålt utan lager) köps in direkt. Produkter som bevisar sig får täckning hemma. Snabb inhemsk ledtid.',
-      flyLabel:'Ledtid Sverige (dagar)',
-      minYearLabel:'Container-tröskel (ej relevant för Sverige)',
-      cards:[
-        {t:'Dropship', r:'Til 0, säljer knappt', d:'Köps ej<br>väntar tills minus'},
-        {t:'Sålt / minus', r:'Negativt saldo el. 2+/mån', d:'Täck minus +3<br>el. köp 3'},
-        {t:'Bevisad', r:'>3/mån → 14 d · 10+/3m → 30 d', d:'Täckning hemma<br>trappas upp'},
-        {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
-      ]
-    }
   }
 };
 let activeSup='cheng';
@@ -784,6 +754,7 @@ function renderBlueprint(){
     ['Båt-ledtid',bpVal(ch.sea,'155')+' dagar'],
     ['Flyg-ledtid (Genuine/3Card)',bpVal(ch.air,'52')+' dagar'],
     ['Flyg-brygga','Läggs bara om lagret tar slut före containern, och gapet är ≥1 mån försäljning och ≥5 st (eller om produkten helt tar slut)'],
+    ['Order efter container',bpVal(ch.postcont,'14')+' dagar — inkommande order som landar inom denna period efter container räknas som befintligt lager (undviker uppblåst förslag)'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
   ];
@@ -798,6 +769,7 @@ function renderBlueprint(){
     ['Container-datum',bpVal(sc.cont,'sätts per körning')],
     ['Flyg-ledtid',bpVal(sc.air,'52')+' dagar'],
     ['Flyg-brygga','Fyller på tills containern är säljbar'],
+    ['Order efter container',bpVal(sc.postcont,'14')+' dagar — inkommande order som landar inom denna period efter container räknas som befintligt lager'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja. Ger en utfasningslista från samma data.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sc.artcut,'sätts per körning')],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
@@ -836,30 +808,12 @@ function renderBlueprint(){
     ['Lager som räknas','Til (säljbart, kan vara negativt). Ila räknas EJ.'],
   ];
 
-  // ── Sverige ──
-  const se=cfgFor('sverige');
-  const sverigeRows=[
-    ['Flöde','Dropship som trappas upp till lagervara (samma motor som EU)'],
-    ['Negativt saldo (Til < 0)','Sålt utan lager. Räknar in det som är på väg. Kvarstår minus → täck det + 3 buffert. Täcker påväg redan minuset → köp 0.'],
-    ['Til = 0, säljer knappt (<2/mån)','Köps ej — ren dropship tills den går minus'],
-    ['Börjar sälja (2/mån)','Köp 3'],
-    ['Säljer (3+/mån)','30 dagars täckning, golv 3'],
-    ['Stark säljare (6+/mån)','30 dagars täckning, golv 5'],
-    ['Avrundning','Närmaste standardsteg (1/3/5/10/15/20/25/30/40/50). T.ex. behov 6–7 → 5, 8–9 → 10.'],
-    ['Ledtid Sverige',bpVal(se.fly,'4')+' dagar (inhemsk, snabb påfyllning)'],
-    ['Produktfamiljer','Skydd, Tillbehör & Övrigt (förbockas — beställs som helhet)'],
-    ['Leverantör slut / end-of-life','Sköts utanför verktyget: tas bort ur order hos leverantör, kommer tillbaka nästa förslag. Permanent EOL → slutförsäljning manuellt.'],
-    ['Utfasningsgräns (artikelnr)',bpVal(se.artcut,'sätts per körning')],
-    ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
-    ['Lager som räknas','Til (säljbart, kan vara negativt). Ila räknas EJ.'],
-  ];
-
   let html='';
   html+=box('Cheng','Aktiv','#0F6E56',chengRows,'Skarpt validerad. Genuine + 3 Card körda med riktiga order.');
   html+=box('Shalin Container','Aktiv','#185FA5',contRows,'Verifierad 279/279 mot data.');
   html+=box('Shalin Vecka','Aktiv','#854F0B',veckaRows,'Verifierad: 503/505 köp, 1015/1015 utfasning.');
   html+=box('EU — leverantörer','Aktiv','#6D28D9',euRows,'Dropship-modell. Negativt saldo driver inköp.');
-  html+=box('Sverige — leverantörer','Aktiv','#0E7490',sverigeRows,'Dropship-modell (samma motor som EU). Negativt saldo driver inköp. Snabb inhemsk ledtid.');
+  html+=box('Sverige','Ej byggd','#bbb',null,'Regelverk ej fastställt. Vissa Sverige-produkter dropshippas som EU — byggs efter samma mönster.');
   document.getElementById('blueprint-content').innerHTML=html;
 }
 function openBlueprint(){renderBlueprint();document.getElementById('blueprint-overlay').style.display='block';document.body.style.overflow='hidden';}
@@ -910,6 +864,7 @@ function applySupDefaults(){
   const d=S().leadDefaults;
   const set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
   set('s-sea',d.sea);set('s-air',d.air);set('s-fly',d.fly);
+  set('s-postcont',14); // credit POs landing up to 14 days after container by default
   // min-year threshold: container gate, boat threshold, or vecka container cutoff
   const minY=S().minYearForContainer!=null?S().minYearForContainer
             :(S().veckaContainerThreshold!=null?S().veckaContainerThreshold:S().minYearForBat);
@@ -941,16 +896,17 @@ function renderSettingsUI(){
   show('mode-block',!isVecka);
   show('date-calc-block',!isVecka);
   show('fw-cont',!isVecka);
+  show('fw-postcont',!isVecka);
   show('fw-sea',!isVecka);
   show('fw-air',!isVecka);   // "Flyg-ledtid Genuine/3Card" — irrelevant for Vecka
   show('fw-tup',!isVecka);
   show('fw-tdn',!isVecka);
   // Vecka-only block
   show('fw-vecka-artcut',isVecka || S().phaseOutMaxYear!=null);
-  // Weekly modes (Vecka/EU/Sverige) reuse the s-fly field; keep it visible
-  // and label it per the active supplier's own uiText (was hardcoded "Vecka").
+  // "Ledtid Vecka" reuses the s-fly field; relabel and keep it visible
   if(isVecka){
-    setText('fly-label',t.flyLabel);
+    setText('fly-label','Ledtid Vecka (dagar)');
+    const cardEl=document.getElementById('class-cards');
   }
 
   const cardsEl=document.getElementById('class-cards');
@@ -1012,7 +968,7 @@ function prunePOList(){
 }
 function cfgKey(){return 'inkop-cfg-'+activeSup;}
 function saveCfg(){
-  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),artcut:gv('s-artcut'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
+  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),artcut:gv('s-artcut'),postcont:gv('s-postcont'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
   saveToStorage(cfgKey(),c);showSaved('cfg-saved-tag');
 }
 // Load this supplier's saved settings. If none exist yet, apply the
@@ -1021,7 +977,7 @@ function saveCfg(){
 function loadCfg(){
   const c=loadFromStorage(cfgKey());
   if(c){
-    ['cont','sea','air','fly','miny','artcut','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined&&c[k]!=='')el.value=c[k];});
+    ['cont','sea','air','fly','miny','artcut','postcont','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined&&c[k]!=='')el.value=c[k];});
     if(c.mode){orderMode=c.mode;setMode(c.mode);}
   } else {
     // No saved settings for this supplier yet → apply its defaults
@@ -1383,12 +1339,27 @@ function hasActivePO(filePOs){
 // gaps are ignored: a flight ordered today lands in ~52 days, so it cannot
 // bridge a hole that closes before then (e.g. an air PO already inbound).
 // If incoming POs keep stock >= 0 through that window, airGap = 0.
-function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay, airLeadDay){
+// postContWindow: POs that become sellable within this many days AFTER the
+// container still count as on-hand for the period — an order landing a day
+// or two after the boat is effectively already there, so ignoring it would
+// inflate the boat order. This only affects stockAtContainer (the boat math);
+// the air-bridge window (airGap/firstStockout) is unchanged and still only
+// measures shortfalls BEFORE the container.
+function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay, airLeadDay, postContWindow){
   let stock = startStock + (ilaQty||0); // ila added when supplier counts it (0 for Cheng)
   let stockAtContainer = 0;
   let firstStockout = -1;
   let maxDeficit = 0; // deepest the running balance goes negative in the bridgeable window
   const bridgeFrom = airLeadDay!=null ? airLeadDay : 0;
+  const postWin = postContWindow!=null ? postContWindow : 0;
+
+  // Stock projected to the container day (boat math). Any incoming PO that
+  // lands from today up to containerDay + postWin is credited here; sales are
+  // only counted up to the container day itself, so a near-future order fills
+  // the projected position without letting later sales erode it.
+  const creditedIncoming = deliveries
+    .filter(d => d.day <= containerDay + postWin)
+    .reduce((s,d) => s + d.qty, 0);
 
   for(let day=0; day<=containerDay+1; day++){
     deliveries.forEach(d=>{ if(d.day===day) stock+=d.qty; });
@@ -1401,7 +1372,14 @@ function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay,
     }
 
     if(day===containerDay){
-      stockAtContainer=Math.max(0,stock);
+      // base = stock from lager + POs already landed by container day, minus
+      // sales to date. Add any post-container-window PO not yet added in the
+      // day loop (it lands after containerDay but counts for the period).
+      const alreadyAdded = deliveries
+        .filter(d => d.day <= containerDay)
+        .reduce((s,d) => s + d.qty, 0);
+      const postContExtra = creditedIncoming - alreadyAdded; // POs in (containerDay, containerDay+postWin]
+      stockAtContainer = Math.max(0, stock + postContExtra);
     }
   }
 
@@ -1680,7 +1658,8 @@ function runCalc(){
     // Simulate stock through to container day
     // ila counted as available only when supplier config allows
     // airLead passed so air bridge ignores gaps that close before a new flight could land
-    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer, cfg.airLead);
+    const postContWin=parseInt(gv('s-postcont'));
+    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer, cfg.airLead, isNaN(postContWin)?14:postContWin);
 
     // Days left (stock only, without PO)
     const daysLeft=calcDaysLeftStock(p.lager,daily);
@@ -2381,7 +2360,7 @@ function doExport(type){
   const inlev=type==='test'?'':gv('exp-inlev');
   const next=type==='test'?'':gv('exp-next');
   // Traceability: always record which settings this export was computed with
-  const meta=`Leverantör: ${S().label} | Container: ${gv('s-cont')||'—'} | Tröskel: ${gv('s-miny')||'—'}/år | Flyg-ledtid: ${gv('s-air')||'—'} d`;
+  const meta=`Leverantör: ${S().label} | Container: ${gv('s-cont')||'—'} | Tröskel: ${gv('s-miny')||'—'}/år | Flyg-ledtid: ${gv('s-air')||'—'} d | Order efter container: ${gv('s-postcont')||'—'} d`;
   const lines=[
     'PO-nummer;ETA;Dagar till hylla;Nästa container;Inställningar',
     `${po};${eta};${inlev};${next};${meta}`,
