@@ -333,6 +333,16 @@ tr.removed td{opacity:.35}
         <input type="number" id="s-postcont" value="14" min="0" max="60" onchange="saveCfg()">
         <div id="t-postcont" class="tooltip"><strong>Order strax efter container</strong><br>En inkommande order som blir säljbar kort efter container-datumet finns i praktiken redan på plats för perioden. Detta fält säger hur många dagar efter container en sådan order ändå ska räknas som befintligt lager, så att förslaget inte blåses upp.<div class="ex">Container 22 okt, fält = 14 → en order säljbar 23 okt räknas in. 0 = endast order t.o.m. container-dagen (striktast).</div></div>
       </div>
+      <div class="fi" style="position:relative" id="fw-newlead">
+        <label>Ny-order-ledtid Genuine/3Card (dagar) <button class="help-btn" onclick="toggleTip('t-newlead')">?</button></label>
+        <input type="number" id="s-newlead" value="120" min="30" max="200" onchange="saveCfg()">
+        <div id="t-newlead" class="tooltip"><strong>Ledtid för produkter UTAN order på väg</strong><br>En produkt som inte har någon inköpsorder i datan har inget på väg — beställer du idag tar det så här många dagar till hyllan. Flyg-bryggan sträcks hela vägen dit så du inte står tom. Genuine och 3 Card ligger normalt på ~120 dagar.<div class="ex">Produkter MED order på väg använder container-datumet ovan istället.</div></div>
+      </div>
+      <div class="fi" style="position:relative" id="fw-newlead-oth">
+        <label>Ny-order-ledtid Övriga (dagar) <button class="help-btn" onclick="toggleTip('t-newlead-oth')">?</button></label>
+        <input type="number" id="s-newlead-oth" value="120" min="30" max="200" onchange="saveCfg()">
+        <div id="t-newlead-oth" class="tooltip"><strong>Ledtid Övriga utan order på väg</strong><br>Samma som fältet ovan, men för Övriga-produkter. Kan vara kortare än Genuine/3 Card — sänk det här när du sett ett utkast och vill dra ner volymen på Övriga utan att röra Genuine/3 Card.<div class="ex">Står på 120 från start (samma som Genuine/3Card) tills du sänker det.</div></div>
+      </div>
       <div class="fi" style="position:relative" id="fw-sea">
         <label>Båt-ledtid till hylla (dagar) <button class="help-btn" onclick="toggleTip('t-sea')">?</button></label>
         <input type="number" id="s-sea" value="155" min="100" max="220" onchange="saveCfg()">
@@ -753,6 +763,9 @@ function renderBlueprint(){
     ['Minsta årsförsäljning för båt',bpVal(ch.miny,'15')],
     ['Båt-ledtid',bpVal(ch.sea,'155')+' dagar'],
     ['Flyg-ledtid (Genuine/3Card)',bpVal(ch.air,'52')+' dagar'],
+    ['Två horisonter','Produkter MED order på väg (PO) fylls av den skickade containern (container-datumet). Produkter UTAN PO måste beställas nytt → ny-order-ledtiden nedan, och flyg-bryggan sträcks hela vägen dit.'],
+    ['Ny-order-ledtid Genuine/3Card',bpVal(ch.newlead,'120')+' dagar'],
+    ['Ny-order-ledtid Övriga',bpVal(ch.newleadOth,'120')+' dagar'],
     ['Flyg-brygga','Läggs bara om lagret tar slut före containern, och gapet är ≥1 mån försäljning och ≥5 st (eller om produkten helt tar slut)'],
     ['Order efter container',bpVal(ch.postcont,'14')+' dagar — inkommande order som landar inom denna period efter container räknas som befintligt lager (undviker uppblåst förslag)'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
@@ -897,6 +910,8 @@ function renderSettingsUI(){
   show('date-calc-block',!isVecka);
   show('fw-cont',!isVecka);
   show('fw-postcont',!isVecka);
+  show('fw-newlead',!isVecka);       // ny-order-ledtid Genuine/3Card
+  show('fw-newlead-oth',!isVecka);   // ny-order-ledtid Övriga
   show('fw-sea',!isVecka);
   show('fw-air',!isVecka);   // "Flyg-ledtid Genuine/3Card" — irrelevant for Vecka
   show('fw-tup',!isVecka);
@@ -968,7 +983,7 @@ function prunePOList(){
 }
 function cfgKey(){return 'inkop-cfg-'+activeSup;}
 function saveCfg(){
-  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),artcut:gv('s-artcut'),postcont:gv('s-postcont'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
+  const c={cont:gv('s-cont'),sea:gv('s-sea'),air:gv('s-air'),fly:gv('s-fly'),miny:gv('s-miny'),artcut:gv('s-artcut'),postcont:gv('s-postcont'),newlead:gv('s-newlead'),newleadOth:gv('s-newlead-oth'),tup:gv('s-tup'),tdn:gv('s-tdn'),mode:orderMode};
   saveToStorage(cfgKey(),c);showSaved('cfg-saved-tag');
 }
 // Load this supplier's saved settings. If none exist yet, apply the
@@ -978,6 +993,8 @@ function loadCfg(){
   const c=loadFromStorage(cfgKey());
   if(c){
     ['cont','sea','air','fly','miny','artcut','postcont','tup','tdn'].forEach(k=>{const el=document.getElementById('s-'+k);if(el&&c[k]!==undefined&&c[k]!=='')el.value=c[k];});
+    const nl=document.getElementById('s-newlead');if(nl&&c.newlead!==undefined&&c.newlead!=='')nl.value=c.newlead;
+    const nlo=document.getElementById('s-newlead-oth');if(nlo&&c.newleadOth!==undefined&&c.newleadOth!=='')nlo.value=c.newleadOth;
     if(c.mode){orderMode=c.mode;setMode(c.mode);}
   } else {
     // No saved settings for this supplier yet → apply its defaults
@@ -1363,18 +1380,24 @@ function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay,
 
   for(let day=0; day<=containerDay+1; day++){
     deliveries.forEach(d=>{ if(d.day===day) stock+=d.qty; });
+    // Track the "paper" balance (can go negative) for shortfall/air-gap math,
+    // but real stock can never fall below 0 — you can't sell what you don't
+    // have, and lost sales don't come back when a container lands. We keep a
+    // separate running deficit for the air-bridge, and floor the real stock.
     stock -= dailySales;
+    let paperBalance = stock; // may be negative — used only for shortfall depth
+    if(stock < 0) stock = 0;  // real stock floors at 0 (lost sales are gone)
 
     if(day<containerDay){
-      if(stock<0 && firstStockout<0) firstStockout=day;
+      if(paperBalance<0 && firstStockout<0) firstStockout=day;
       // only a deficit a new flight could actually fill counts toward airGap
-      if(day>=bridgeFrom && stock<0 && -stock>maxDeficit) maxDeficit=-stock;
+      if(day>=bridgeFrom && paperBalance<0 && -paperBalance>maxDeficit) maxDeficit=-paperBalance;
     }
 
     if(day===containerDay){
-      // base = stock from lager + POs already landed by container day, minus
-      // sales to date. Add any post-container-window PO not yet added in the
-      // day loop (it lands after containerDay but counts for the period).
+      // base = real floored stock + POs already landed by container day. Add
+      // any post-container-window PO not yet added in the day loop (it lands
+      // after containerDay but counts for the period).
       const alreadyAdded = deliveries
         .filter(d => d.day <= containerDay)
         .reduce((s,d) => s + d.qty, 0);
@@ -1655,11 +1678,25 @@ function runCalc(){
     const deliveries=getPODeliveries(p.filePOs);
     const poBatTotal=deliveries.reduce((s,d)=>s+d.qty,0);
 
-    // Simulate stock through to container day
+    // ── Två horisonter (Cheng): produkter MED order på väg fylls på av den
+    // redan skickade containern (container-datumet). Produkter UTAN order på
+    // väg måste beställas nytt nu — det tar ny-order-ledtiden till hyllan,
+    // och den skiljer sig per familj (Genuine/3Card vs Övriga). Flyg-bryggan
+    // sträcks då hela vägen till den bortre horisonten så inget glapp uppstår.
+    let horizonDays = daysToContainer; // default: har PO → container-datum
+    if(deliveries.length===0){
+      const fam=getFamily(p); // 'genuine' | '3card' | 'other'
+      const leadGen=parseInt(gv('s-newlead'))||120;
+      const leadOth=parseInt(gv('s-newlead-oth'))||leadGen;
+      const newLead=(fam==='other')?leadOth:leadGen;
+      horizonDays=Math.max(1,newLead);
+    }
+
+    // Simulate stock through to the chosen horizon
     // ila counted as available only when supplier config allows
     // airLead passed so air bridge ignores gaps that close before a new flight could land
     const postContWin=parseInt(gv('s-postcont'));
-    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, daysToContainer, cfg.airLead, isNaN(postContWin)?14:postContWin);
+    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, horizonDays, cfg.airLead, isNaN(postContWin)?14:postContWin);
 
     // Days left (stock only, without PO)
     const daysLeft=calcDaysLeftStock(p.lager,daily);
@@ -1720,8 +1757,8 @@ function runCalc(){
     if(otype==='none')continue;
 
     // daysLeft = when stock actually runs out (sim accounts for lager + ila + all POs)
-    // firstStockout=-1 means stock lasts until container — show daysToContainer+
-    const daysLeftSim = sim.firstStockout >= 0 ? sim.firstStockout : daysToContainer + 30;
+    // firstStockout=-1 means stock lasts until the horizon — show horizon+
+    const daysLeftSim = sim.firstStockout >= 0 ? sim.firstStockout : horizonDays + 30;
 
     // Coverage after container = bat order / monthly demand
     const coverAfter = demandMonthly>0 ? Math.round((batQ/demandMonthly)*10)/10 : 0;
@@ -1736,11 +1773,11 @@ function runCalc(){
       batQ, airQ, otype,
       uBat:batQ, uAir:airQ, coverAfter, lastDiff,
       poAir:deliveries.filter(d=>d.day<=cfg.airLead).reduce((s,d)=>s+d.qty,0),
-      poBat:deliveries.filter(d=>d.day<=daysToContainer).reduce((s,d)=>s+d.qty,0),
+      poBat:deliveries.filter(d=>d.day<=horizonDays).reduce((s,d)=>s+d.qty,0),
       poBatTotal,
       daysLeft:daysLeftSim,
       daysLeftTotal:daysLeftSim,
-      daysToContainer,
+      daysToContainer:horizonDays,
       inPO, sim,
       suggestQty:otype.includes('bat')?batQ:airQ,
       warns:[]
