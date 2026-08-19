@@ -1364,9 +1364,16 @@ function hasActivePO(filePOs){
 // measures shortfalls BEFORE the container.
 function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay, airLeadDay, postContWindow){
   let stock = startStock + (ilaQty||0); // ila added when supplier counts it (0 for Cheng)
+  // Two balances:
+  //  • stock  = REAL stock — floors at 0 (you can't sell what you don't have,
+  //             and lost sales don't come back). Drives stockAtContainer (boat math).
+  //  • paper  = CUMULATIVE balance — may go negative. Measures total unmet
+  //             demand, so the air bridge can cover EVERYTHING until the boat.
+  let paper = stock;
   let stockAtContainer = 0;
   let firstStockout = -1;
-  let maxDeficit = 0; // deepest the running balance goes negative in the bridgeable window
+  let maxDeficit = 0; // deepest bridgeable shortfall (net of deliveries)
+  let bridgeBaseline = 0; // deficit already accrued BEFORE a new flight can land — those sales are lost either way, the bridge must not re-buy them
   const bridgeFrom = airLeadDay!=null ? airLeadDay : 0;
   const postWin = postContWindow!=null ? postContWindow : 0;
 
@@ -1379,19 +1386,24 @@ function simulateStock(startStock, ilaQty, deliveries, dailySales, containerDay,
     .reduce((s,d) => s + d.qty, 0);
 
   for(let day=0; day<=containerDay+1; day++){
-    deliveries.forEach(d=>{ if(d.day===day) stock+=d.qty; });
-    // Track the "paper" balance (can go negative) for shortfall/air-gap math,
-    // but real stock can never fall below 0 — you can't sell what you don't
-    // have, and lost sales don't come back when a container lands. We keep a
-    // separate running deficit for the air-bridge, and floor the real stock.
+    deliveries.forEach(d=>{ if(d.day===day){ stock+=d.qty; paper+=d.qty; } });
     stock -= dailySales;
-    let paperBalance = stock; // may be negative — used only for shortfall depth
+    paper -= dailySales;
     if(stock < 0) stock = 0;  // real stock floors at 0 (lost sales are gone)
 
+    if(day < bridgeFrom){
+      // Deficit accrued before the flight can land is unbridgeable — remember
+      // it so the window below only counts what a flight could actually fill.
+      bridgeBaseline = Math.max(0, -paper);
+    }
+
     if(day<containerDay){
-      if(paperBalance<0 && firstStockout<0) firstStockout=day;
-      // only a deficit a new flight could actually fill counts toward airGap
-      if(day>=bridgeFrom && paperBalance<0 && -paperBalance>maxDeficit) maxDeficit=-paperBalance;
+      if(paper<0 && firstStockout<0) firstStockout=day;
+      // bridgeable gap = cumulative deficit minus the pre-window part
+      if(day>=bridgeFrom && paper<0){
+        const need = -paper - bridgeBaseline;
+        if(need>maxDeficit) maxDeficit=need;
+      }
     }
 
     if(day===containerDay){
