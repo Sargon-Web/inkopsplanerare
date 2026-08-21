@@ -1487,10 +1487,14 @@ function calcDaysLeftTotal(p,daily,airLead){
 }
 
 function rnd5(n){
+  // Avrundningstrappa, alltid uppåt. Finare steg sedan aug 2026:
+  // upp till 100 -> närmaste 5, över 100 -> närmaste 10, över 500 -> närmaste 25.
+  // (Tidigare hoppade trappan 100->120->150 vilket gav upp till +14% systematiskt överköp.)
   if(n<=0)return 0;
-  const s=[5,10,15,20,25,30,40,50,60,70,80,90,100,120,150,200,250,300];
-  for(const v of s)if(n<=v)return v;
-  return Math.ceil(n/50)*50;
+  if(n<=5)return 5;
+  if(n<=100)return Math.ceil(n/5)*5;
+  if(n<=500)return Math.ceil(n/10)*10;
+  return Math.ceil(n/25)*25;
 }
 
 // EU rounds to the NEAREST standard step (6→5, 8→10), not always up.
@@ -1517,6 +1521,18 @@ function getWarnings(p){
     w.push(`${p.poBatTotal} st redan på väg — mer än 60% av årsförsäljningen.`);
   if(p.klass==='Cp'&&p.uBat>avg*6)
     w.push(`C+-produkt med stor order (${p.uBat} st) — granska om det är motiverat.`);
+  // Överlagervakt: täckning efter order över 10 mån => risk om trenden viker
+  // Gäller bara produkter som säljer >=5/mån — för småsäljare är lång täckning
+  // inbyggd i minsta-batch-regeln (5 st) och ingen risk värd att varna för.
+  if(avg>=5&&(p.uBat>0||p.uAir>0)){
+    const stockAfter=(p.sim?p.sim.stockAtContainer:0)+p.uBat+p.uAir;
+    const coverMonths=stockAfter/avg;
+    if(coverMonths>10)
+      w.push(`Ordern ger ca ${Math.round(coverMonths)} månaders lager (${Math.round(avg)}/mån) — risk för överlager om trenden viker.`);
+  }
+  // Trendtopp: senaste månaden långt över årssnittet => ordern bygger på topptakt
+  if(p.y1>=30&&p.m1>3*(p.y1/12)&&(p.uBat>0||p.uAir>0))
+    w.push(`Topptakt: ${p.m1}/mån senaste månaden vs ${Math.round(p.y1/12)}/mån i årssnitt — ordern bygger på toppen, trimma om den är tillfällig.`);
   return w;
 }
 
