@@ -1487,14 +1487,14 @@ function calcDaysLeftTotal(p,daily,airLead){
 }
 
 function rnd5(n){
-  // Avrundningstrappa, alltid uppåt. Finare steg sedan aug 2026:
-  // upp till 100 -> närmaste 5, över 100 -> närmaste 10, över 500 -> närmaste 25.
+  // Avrundningstrappa, alltid uppåt.
+  // Upp till 100: original-stegen (5,10,15,20,25,30,40,50,60,70,80,90,100).
+  // Över 100: raka 10-steg hela vägen (110,120,130,...).
   // (Tidigare hoppade trappan 100->120->150 vilket gav upp till +14% systematiskt överköp.)
   if(n<=0)return 0;
-  if(n<=5)return 5;
-  if(n<=100)return Math.ceil(n/5)*5;
-  if(n<=500)return Math.ceil(n/10)*10;
-  return Math.ceil(n/25)*25;
+  const s=[5,10,15,20,25,30,40,50,60,70,80,90,100];
+  for(const v of s)if(n<=v)return v;
+  return Math.ceil(n/10)*10;
 }
 
 // EU rounds to the NEAREST standard step (6→5, 8→10), not always up.
