@@ -1840,8 +1840,13 @@ function runVeckaCalc(cfg,today){
     // Skip totally dead rows with no data AND no stock (nothing to decide)
     if(p.y1===0&&p.m3===0&&p.m1===0&&p.lager===0)continue;
 
-    // Container-qualified products are handled by Shalin Container, not here
-    if(p.y1>=contThr)continue;
+    // Container-qualified (25+/år) lämnar Vecka BARA om en båtorder faktiskt
+    // är på väg (inköpsorder i filen). En 25+-produkt UTAN något på väg får
+    // inte falla mellan stolarna: den ligger kvar i veckoköpet tills
+    // containerordern är lagd, och flaggas nedan så den beställs på Container.
+    const incomingPO=(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0);
+    if(p.y1>=contThr && incomingPO>0)continue;
+    const contQualified = p.y1>=contThr;
 
     const a3=p.m3/3;
     const trend=getTrend(p,cfg);
@@ -1887,7 +1892,7 @@ function runVeckaCalc(cfg,today){
     }
     if(qty<=0)continue;
 
-    proposals.push(mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,{}));
+    proposals.push(mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,{contQualified}));
   }
   proposals.forEach(p=>{p.warns=getVeckaWarnings(p);});
   renderPODateWarning();
@@ -2001,13 +2006,14 @@ function mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,extra){
     poBatTotal:(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0),
     daysLeft, daysLeftTotal:daysLeft, daysToContainer:daysLeft,
     inPO:hasActivePO(p.filePOs), sim:null,
-    veckaMode:mode, phaseOut:!!extra.phaseOut,
+    veckaMode:mode, phaseOut:!!extra.phaseOut, contQualified:!!extra.contQualified,
     suggestQty:qty, warns:[]
   };
 }
 
 function getVeckaWarnings(p){
   const w=[];
+  if(p.contQualified) w.push(`25+/år utan båtorder — hör hemma på Shalin Container. Veckoköpet täcker bara tills containerordern är lagd — lägg den på nästa container.`);
   if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
   else if(p.veckaMode==='proven') w.push(`Bevisad (10+ på 3 mån) — 50 dagars täckning.`);
   else if(p.uBat>=5&&p.m1>p.m3/3) w.push(`Stark månad — trappar upp till 5 st.`);
