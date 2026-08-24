@@ -16,6 +16,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-siz
 .sup-btn:hover{background:#f1efe8}
 .sup-btn.active{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
 .sup-btn.soon{opacity:.4;cursor:default}
+.import-locked{opacity:.45;filter:grayscale(.3)}
+.sup-nudge{animation:supPulse 1.2s ease 2}
+@keyframes supPulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 0 3px rgba(185,72,28,.35)}}
 .steps{display:flex;gap:0;margin-bottom:1.5rem;overflow-x:auto;background:#fff;border-radius:10px;padding:6px;border:1px solid #e5e5e2}
 .step{display:flex;align-items:center;gap:6px;font-size:12px;color:#888;padding:6px 12px;border-radius:8px;white-space:nowrap;cursor:default}
 .step.done{color:#0F6E56;cursor:pointer}.step.done:hover{background:#f0fdf8;border-radius:8px}
@@ -195,12 +198,15 @@ tr.removed td{opacity:.35}
 
 <!-- V0: IMPORTERA -->
 <div id="v0">
+  <div id="sup-gate-banner" style="margin-bottom:1rem;padding:12px 14px;background:#fff8ee;border:1px solid #f0d9b8;border-radius:10px;font-size:13px;color:#7a5a1a">
+    <strong>👉 Välj leverantör först.</strong> Klicka på rätt leverantör i knappraden högst upp innan du laddar upp — filen importeras till den leverantör som är vald. Uppladdningen är låst tills du valt.
+  </div>
   <div class="card">
     <h3 style="font-size:14px;font-weight:500;margin-bottom:6px;position:relative">Steg 1 — Ladda upp 12-månadersfil <button class="help-btn" onclick="toggleTip('t-step1')">?</button>
       <div id="t-step1" class="tooltip"><strong>Vad gör jag här?</strong><br>Detta är alltid första steget. Gå till Kodmyran, exportera "Alla produkter från leverantören" med 12 månaders data, och ladda upp .xlsx-filen här (dra in den eller klicka).<div class="ex">Kör du Shalin? Exportera Shalins produkter. Kodmyran hinner ofta inte få ut allt — därför laddar du fler kortare vyer i steg 2.</div></div>
     </h3>
     <p style="font-size:12px;color:#888;margin-bottom:1rem">Exportera "Alla produkter från leverantören" med 1 års data från Kodmyran. Ladda upp den här först.</p>
-    <div class="upload-area" id="drop-zone" onclick="document.getElementById('fi').click()">
+    <div class="upload-area" id="drop-zone" onclick="if(!supChosen){supGateNudge();return;}document.getElementById('fi').click()">
       <div style="font-size:40px;margin-bottom:10px">📊</div>
       <strong style="font-size:14px;display:block;margin-bottom:5px">Ladda upp 12-månadersfil</strong>
       <p style="color:#888;font-size:13px">Klicka eller dra och släpp .xlsx här</p>
@@ -213,7 +219,7 @@ tr.removed td{opacity:.35}
     <div class="card" style="border-color:#9FE1CB">
       <h3 style="font-size:14px;font-weight:500;margin-bottom:6px;color:#0F6E56">✅ Steg 2 — Lägg till fler exportvyer (rekommenderat)</h3>
       <p style="font-size:12px;color:#666;margin-bottom:1rem">Kodmyran kan timeouta och bara få ut en del av katalogen per export. Ladda upp så många vyer du behöver (3m, 1m, vecka …) — varje fil kompletterar med produkter och PO-info som saknas. Inga dubletter skapas; systemet mergar på artikelnummer.</p>
-      <div class="upload-area" id="drop-zone-2" onclick="document.getElementById('fi2').click()" style="padding:1.5rem;border-style:solid;border-color:#9FE1CB">
+      <div class="upload-area" id="drop-zone-2" onclick="if(!supChosen){supGateNudge();return;}document.getElementById('fi2').click()" style="padding:1.5rem;border-style:solid;border-color:#9FE1CB">
         <div style="font-size:32px;margin-bottom:8px">📋</div>
         <strong style="font-size:13px;display:block;margin-bottom:4px">Ladda upp ytterligare exportfil</strong>
         <p style="color:#888;font-size:12px">Klicka eller dra och släpp .xlsx här — upprepa för fler vyer</p>
@@ -374,7 +380,11 @@ tr.removed td{opacity:.35}
       </div>
       <div class="fi" style="position:relative;display:none" id="fw-vecka-artcut">
         <label>Utfasningsgräns — artikelnr under detta = 12 mån+ gammal <button class="help-btn" onclick="toggleTip('t-artcut')">?</button></label>
-        <input type="number" id="s-artcut" value="0" min="0" max="9999999" onchange="saveCfg()">
+        <input type="number" id="s-artcut" value="240000" min="0" max="9999999" onchange="saveArtcut();saveCfg()">
+        <div id="artcut-confirm" style="display:none;margin-top:6px;padding:8px 10px;background:#fff8ee;border:1px solid #f0d9b8;border-radius:8px;font-size:12px;color:#7a5a1a">
+          <span id="artcut-confirm-txt"></span>
+          <button class="btn" style="padding:2px 10px;font-size:12px;margin-left:8px" onclick="confirmArtcut()">✓ Ja, stämmer</button>
+        </div>
         <div id="t-artcut" class="tooltip"><strong>Utfasningsgräns</strong><br>Artiklar med lägre nummer än detta räknas som ~12 mån gamla. Om de dessutom sålt under 10/år fasas de ut.<div class="ex">Sätt t.ex. 241000 om artiklar under det är minst ett år gamla.</div></div>
       </div>
       <div class="fi" style="grid-column:1/-1;background:#f5f5f3;border-radius:8px;padding:10px 14px;border:1px solid #e5e5e2">
@@ -563,6 +573,7 @@ const TODAY = new Date();
 const todayStr = TODAY.toISOString().split('T')[0];
 let products=[], proposals=[], removedRows=new Set(), poList=[];
 let openTip=null, selected=new Set(), sortCol='daysLeft', sortDir=1, orderMode='bat';
+let supChosen=false; // kräver ett AKTIVT leverantörsval per session innan filimport
 
 // ── Supplier config ──────────────────────────────────────────────
 // Each supplier defines its own classification, coverage and demand
@@ -855,6 +866,7 @@ function renderOb(){
 // ── Sup selector ─────────────────────────────────────────────────
 function selectSup(key,btn){
   if(!SUPPLIERS[key]||!SUPPLIERS[key].enabled)return;
+  supChosen=true;updateImportGate();
   activeSup=key;
   document.querySelectorAll('.sup-btn:not(.soon)').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
@@ -887,7 +899,7 @@ function applySupDefaults(){
             :(S().veckaContainerThreshold!=null?S().veckaContainerThreshold:S().minYearForBat);
   set('s-miny',minY);
   // Vecka/EU: article-number phase-out cutoff starts blank (user sets it each run)
-  if(isWeekly()){const el=document.getElementById('s-artcut');if(el&&!el.value)el.value=0;}
+  // (utfasningsgränsen sätts av applySharedArtcut — delad för alla leverantörer)
   // mode: fall back to supplier's first allowed mode
   if(!S().modes.includes(orderMode))setMode(S().modes[0]);
   renderSettingsUI();
@@ -993,6 +1005,41 @@ function saveCfg(){
 // Load this supplier's saved settings. If none exist yet, apply the
 // supplier's config defaults so the threshold/leads are never stale
 // from another supplier (this is what prevented the 15-vs-25 bug).
+// ── Utfasningsgräns: EN delad gräns för alla leverantörer, sparad med datum.
+// Katalogens ålder är samma oavsett leverantör. Förifylls alltid; bekräftas
+// när den är äldre än 60 dagar. DEFAULT_ARTCUT uppdateras vid behov i koden.
+const DEFAULT_ARTCUT=240000, ARTCUT_STALE_DAYS=60;
+function loadArtcut(){
+  const s=loadFromStorage('inkop-artcut');
+  return (s&&s.v!=null)?s:{v:DEFAULT_ARTCUT,t:0};
+}
+function saveArtcut(){
+  const v=parseInt(gv('s-artcut'))||0;
+  saveToStorage('inkop-artcut',{v:v,t:Date.now()});
+  updateArtcutConfirm();
+}
+function confirmArtcut(){
+  const v=parseInt(gv('s-artcut'))||0;
+  saveToStorage('inkop-artcut',{v:v,t:Date.now()});
+  updateArtcutConfirm();
+}
+function applySharedArtcut(){
+  const el=document.getElementById('s-artcut');if(!el)return;
+  const s=loadArtcut();
+  el.value=s.v;
+  updateArtcutConfirm();
+}
+function updateArtcutConfirm(){
+  const box=document.getElementById('artcut-confirm');if(!box)return;
+  const s=loadArtcut();
+  const ageDays=s.t?Math.floor((Date.now()-s.t)/864e5):9999;
+  if(ageDays>ARTCUT_STALE_DAYS&&parseInt(gv('s-artcut'))>0){
+    const txt=document.getElementById('artcut-confirm-txt');
+    if(txt)txt.textContent=(s.t?`Satt för ${ageDays} dagar sedan`:`Aldrig bekräftad`)+` — är ${gv('s-artcut')} fortfarande gränsen för ~12 mån gamla artiklar?`;
+    box.style.display='';
+  } else box.style.display='none';
+}
+
 function loadCfg(){
   const c=loadFromStorage(cfgKey());
   if(c){
@@ -1004,6 +1051,7 @@ function loadCfg(){
     // No saved settings for this supplier yet → apply its defaults
     applySupDefaults();
   }
+  applySharedArtcut(); // delad utfasningsgräns vinner över per-leverantörs-cfg
 }
 function showSaved(id){const el=document.getElementById(id);if(!el)return;el.style.display='inline-block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',2500);}
 function gv(id){const el=document.getElementById(id);return el?el.value:'';}
@@ -1109,7 +1157,17 @@ function parseProducts(rows){
   return out;
 }
 
+function updateImportGate(){
+  const b=document.getElementById('sup-gate-banner');
+  if(b)b.style.display=supChosen?'none':'';
+  ['drop-zone','drop-zone-2'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.toggle('import-locked',!supChosen);});
+}
+function supGateNudge(){
+  document.querySelectorAll('.sup-btn:not(.soon)').forEach(b=>{b.classList.remove('sup-nudge');void b.offsetWidth;b.classList.add('sup-nudge');});
+  alert('Välj leverantör först — klicka på rätt leverantör i knappraden högst upp. Filen importeras till den leverantör som är vald.');
+}
 function loadFile(file,mode){
+  if(!supChosen){supGateNudge();return;}
   console.log('loadFile called, mode:', mode, 'file:', file.name);
   // Use correct status element based on mode
   const statusId=mode==='12m'?'file-status':'merge-status';
@@ -1649,6 +1707,11 @@ function getUndatedLinkedPOs(){
 }
 
 function runCalc(){
+  // Utfasningsgräns 0 = ingen utfasning alls → gamla svaga produkter får order.
+  // Tillåtet, men aldrig tyst: kräver ett aktivt ja.
+  if((parseInt(gv('s-artcut'))||0)===0){
+    if(!confirm('Utfasningsgränsen är 0 — INGEN utfasning sker och gamla svaga produkter kan få inköpsförslag.\n\nVill du verkligen beräkna utan utfasning?'))return;
+  }
   resyncPODates(); // ← ensure saved ETAs are reflected before calculating
   const cfg={
     contDate:gv('s-cont'),
@@ -2631,6 +2694,8 @@ function init(){
   // Pre-check families for suppliers ordered as a whole (Shalin)
   {const defs=S().families, allFam=S().defaultAllFamilies===true;
    ['ff-gen','ff-3c','ff-oth'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.checked=allFam&&Array.isArray(defs)&&!!defs[i];});}
+  updateImportGate(); // filimport låst tills leverantör AKTIVT valts denna session
+  applySharedArtcut();
   if(!loadFromStorage('inkop-seen')){startOnboard();saveToStorage('inkop-seen',true);}
 }
 init();
