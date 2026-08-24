@@ -1712,6 +1712,16 @@ function runCalc(){
   if((parseInt(gv('s-artcut'))||0)===0){
     if(!confirm('Utfasningsgränsen är 0 — INGEN utfasning sker och gamla svaga produkter kan få inköpsförslag.\n\nVill du verkligen beräkna utan utfasning?'))return;
   }
+  // Tomt container-datum + PO:er i registret => produkter med order på väg skulle
+  // få en godtycklig fallback-horisont (134 dgr). Stoppa innan det sker tyst.
+  if(!isWeekly() && !gv('s-cont')){
+    const withPO=(products||[]).filter(p=>p.filePOs&&p.filePOs.length>0).length;
+    if(withPO>0){
+      alert('Fyll i "Nästa container anländer (säljbar hos er)" först.\n\n'+withPO+' produkter har inköpsorder på väg. Utan datum använder verktyget en godtycklig horisont på 134 dagar för dem, vilket ger fel orderförslag.\n\nAnge säljbar-datumet för den container som fyller på dessa produkter (ETA + dagar till hylla).');
+      const el=document.getElementById('s-cont');if(el){goTo(2);setTimeout(()=>el.focus(),100);}
+      return;
+    }
+  }
   resyncPODates(); // ← ensure saved ETAs are reflected before calculating
   const cfg={
     contDate:gv('s-cont'),
