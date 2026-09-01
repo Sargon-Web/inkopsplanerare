@@ -2007,7 +2007,13 @@ function runEuCalc(cfg,today){
     // ── Phase-out: old (art below cutoff) AND weak (<phaseMaxYear/year) ──
     const isOld = artCutoff>0 && p.artNr < artCutoff;
     if(isOld && p.y1 < phaseMaxYear){
-      proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',daysLeft,{phaseOut:true,eu:true}));
+      // Restnoteringsspärr: en utfasningsartikel som redan är SÅLD utan
+      // täckning (kvarstående brist efter inkommande PO) måste ändå
+      // levereras. Köp EXAKT bristen — ingen buffert, inget påslag —
+      // och behåll utfasningsflaggan så den även hamnar på
+      // Slutförsäljnings-listan.
+      const restQty = onHand<0 ? -onHand : 0;
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,restQty,'phaseout',daysLeft,{phaseOut:true,eu:true}));
       continue;
     }
 
@@ -2058,7 +2064,8 @@ function runEuCalc(cfg,today){
 
 function getEuWarnings(p){
   const w=[];
-  if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
+  if(p.phaseOut && (p.uBat||0)>0) w.push(`Utfasning MEN redan såld utan täckning — köp exakt bristen (${p.uBat} st) så kundordern kan levereras. Sätt sedan Slutförsäljning: Ja.`);
+  else if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
   else if(p.veckaMode==='neg') w.push(`Negativt saldo (${p.lager}) — dropship sålt utan lager. Köp ${p.uBat} (täcker minus + buffert).`);
   else if(p.veckaMode==='proven') w.push(`Bevisad säljare — 30 dagars täckning.`);
   else if(p.veckaMode==='active') w.push(`Säljer bra (${p.m1}/mån) — 30 dagars täckning.`);
@@ -2545,7 +2552,7 @@ function exportPhaseOut(){
     document.getElementById('ff-gen').checked,
     document.getElementById('ff-3c').checked,
     document.getElementById('ff-oth').checked);
-  const phase=proposals.filter((p,i)=>!removedRows.has(i)&&p.otype==='phaseout'
+  const phase=proposals.filter((p,i)=>!removedRows.has(i)&&(p.otype==='phaseout'||p.phaseOut)
     &&(!selFam||selFam[getFamily(p)]));
   if(phase.length===0){alert('Inga produkter markerade för utfasning i aktuellt filter.');return;}
   const lines=['Art.nr;Produkt;Slutförsäljning'];
@@ -2678,7 +2685,7 @@ function goTo(n){
     if(infoEl)infoEl.textContent=`Exporten innehåller ${filtered.length} rader (${famStr}) — samma som visas i granskningsvyn med ditt aktiva filter.`;
     // Phase-out export button only for Vecka
     const poBtn=document.getElementById('phaseout-btn');
-    const hasPhaseOut=proposals.some((p,i)=>!removedRows.has(i)&&p.otype==='phaseout');
+    const hasPhaseOut=proposals.some((p,i)=>!removedRows.has(i)&&(p.otype==='phaseout'||p.phaseOut));
     if(poBtn)poBtn.style.display=(isWeekly()||hasPhaseOut)?'':'none';
   }
   for(let i=0;i<6;i++){
