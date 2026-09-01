@@ -2009,9 +2009,8 @@ function runEuCalc(cfg,today){
     if(isOld && p.y1 < phaseMaxYear){
       // Restnoteringsspärr: en utfasningsartikel som redan är SÅLD utan
       // täckning (kvarstående brist efter inkommande PO) måste ändå
-      // levereras. Köp EXAKT bristen — ingen buffert, inget påslag —
-      // och behåll utfasningsflaggan så den även hamnar på
-      // Slutförsäljnings-listan.
+      // levereras. Köp EXAKT bristen — ingen buffert, inget påslag — och
+      // behåll utfasningsflaggan så den även hamnar på Slutförsäljningslistan.
       const restQty = onHand<0 ? -onHand : 0;
       proposals.push(mkVeckaProp(p,trend,demandMonthly,restQty,'phaseout',daysLeft,{phaseOut:true,eu:true}));
       continue;
@@ -2276,7 +2275,11 @@ function renderTable(){
     const famOk=!selFam||!!selFam[getFamily(p)];
     if(!famOk)return false;
     // Klass filter
-    const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&p.klass==='C');
+    // Klass D (sålt under C-tröskeln) saknade kryssruta och föll därför tyst
+    // bort ur både granskningsvyn och exporten — även när produkten hade ett
+    // verkligt behov, t.ex. negativt saldo med väntande kund. D följer nu med
+    // C, som är närmaste lägre klass.
+    const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&(p.klass==='C'||p.klass==='D'));
     if(!klassOk)return false;
     if(fWarn&&(!p.warns||p.warns.length===0))return false;
     if(fCrit&&p.daysLeft>=p.daysToContainer)return false;
@@ -2473,7 +2476,11 @@ function getFilteredRows(){
     const selFam=famSelFromSlots(ffGen,ff3c,ffOth);
     const famOk=!selFam||!!selFam[getFamily(p)];
     if(!famOk)return false;
-    const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&p.klass==='C');
+    // Klass D (sålt under C-tröskeln) saknade kryssruta och föll därför tyst
+    // bort ur både granskningsvyn och exporten — även när produkten hade ett
+    // verkligt behov, t.ex. negativt saldo med väntande kund. D följer nu med
+    // C, som är närmaste lägre klass.
+    const klassOk=(fkA&&p.klass==='A')||(fkB&&p.klass==='B')||(fkCp&&p.klass==='Cp')||(fkC&&(p.klass==='C'||p.klass==='D'));
     if(!klassOk)return false;
     if(fWarn&&(!p.warns||p.warns.length===0))return false;
     if(fCrit&&p.daysLeft>=p.daysToContainer)return false;
