@@ -1901,8 +1901,14 @@ function runCalc(){
 //   • 25+/år leaves Vecka (Container handles it)
 //   • Old + weak (<10/år and art < artCutoff) → phase out
 // Andel av kvarvarande lager som räknas av när bryggan beräknas.
-// 0.8 = 20 % säkerhetsmarginal ifall produkten säljer fortare än prognosen.
-const VECKA_BRIDGE_KEEP=0.8;
+// 1.0 = fullt avdrag. En buffert här ser trygg ut men appliceras på nytt
+// VARJE vecka, så rabatten på befintligt lager staplas och ger systematisk
+// överbeställning (80 % gav +22 % över hela bryggan, fullt avdrag +3 %).
+// Skyddet mot en tunn brygga ligger istället i att ordern räknas om varje
+// vecka: ökar takten fylls det på, och påfyllningen hinner fram så länge
+// nästa leverans är mer än ~35 dagar bort. Underköp är korrigerbart,
+// överköp är det inte.
+const VECKA_BRIDGE_KEEP=1.0;
 
 function runVeckaCalc(cfg,today){
   const S_=S();
@@ -1989,7 +1995,17 @@ function runVeckaCalc(cfg,today){
     //                    (0.8 = 20 % marginal om försäljningen går fortare)
     if(nextDay!==null){
       const windowDays=nextDay-veckaDay;
-      const stockAtVecka=Math.max(0,stock+arrivesBefore-daily*veckaDay);
+      // Restlager när veckoordern landar. Måste simuleras dag för dag:
+      // en leverans som kommer först dag 20 har inte hunnit förbrukas i 25
+      // dagar. Att dra av hela perioden från allt inkommande underskattar
+      // lagret och ger överbeställning vecka efter vecka.
+      let sv=stock, last=0;
+      deliveries.forEach(d=>{
+        if(d.day>veckaDay)return;
+        sv=Math.max(0,sv-daily*(d.day-last)); sv+=d.qty; last=d.day;
+      });
+      sv+=undatedQty;                                   // odaterade = redan hemma
+      const stockAtVecka=Math.max(0,sv-daily*(veckaDay-last));
       const bridgeNeed=daily*windowDays-stockAtVecka*VECKA_BRIDGE_KEEP;
       const bq=bridgeNeed>0?rnd5(Math.round(bridgeNeed)):0;
       if(bq<=0)continue;
