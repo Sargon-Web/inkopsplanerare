@@ -1900,6 +1900,10 @@ function runCalc(){
 //   • "Proven" products (10+/3mån) get 50-day coverage instead
 //   • 25+/år leaves Vecka (Container handles it)
 //   • Old + weak (<10/år and art < artCutoff) → phase out
+// Andel av kvarvarande lager som räknas av när bryggan beräknas.
+// 0.8 = 20 % säkerhetsmarginal ifall produkten säljer fortare än prognosen.
+const VECKA_BRIDGE_KEEP=0.8;
+
 function runVeckaCalc(cfg,today){
   const S_=S();
   const artCutoff=parseInt(gv('s-artcut'))||0; // "12 mån+"-gräns: artiklar UNDER = gamla
@@ -1918,7 +1922,36 @@ function runVeckaCalc(cfg,today){
     // inte falla mellan stolarna: den ligger kvar i veckoköpet tills
     // containerordern är lagd, och flaggas nedan så den beställs på Container.
     const incomingPO=(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0);
-    if(p.y1>=contThr && incomingPO>0)continue;
+
+    // ── PO-REGISTRET: leveranstidslinje istället för rå summa ──────────
+    // getPODeliveries slår upp varje inköpsorder i PO-registret och ger
+    // {day, qty} = antal dagar tills leveransen är SÄLJBAR hos oss
+    // (ETA + dagar till hylla). Tidigare summerades filePOs rått, vilket
+    // gjorde att en container 60 dagar bort räknades som lager i hyllan
+    // redan idag — därför kunde produkter stå tomma i veckor utan att
+    // verktyget föreslog något.
+    const deliveries=getPODeliveries(p.filePOs);
+    const datedQty=deliveries.reduce((s,d)=>s+d.qty,0);
+    // PO:er utan datum i registret går inte att tidsätta. De räknas som
+    // redan hemma (samma beteende som förut) och varnas om separat.
+    const undatedQty=Math.max(0,incomingPO-datedQty);
+
+    // Dag då en NY veckoorder lagd idag är säljbar hos oss.
+    const veckaDay=S_.veckaLead||25;
+
+    // Dela leveranserna vid den dagen: allt som hinner fram innan dess är
+    // lager när ordern landar; den första som kommer EFTER är den vi ska
+    // brygga fram till (typiskt containern).
+    let arrivesBefore=undatedQty, nextDay=null;
+    deliveries.forEach(d=>{
+      if(d.day<=veckaDay) arrivesBefore+=d.qty;
+      else if(nextDay===null) nextDay=d.day;
+    });
+
+    // Container-grind: en 25+/år-produkt lämnar Vecka bara när allt som är
+    // på väg hinner fram FÖRE en ny veckoorder skulle hunnit. Ligger nästa
+    // leverans längre bort tar bryggan nedan över beslutet.
+    if(p.y1>=contThr && incomingPO>0 && nextDay===null)continue;
     const contQualified = p.y1>=contThr;
 
     const a3=p.m3/3;
@@ -1926,7 +1959,10 @@ function runVeckaCalc(cfg,today){
     const demandMonthly=getDemand(p,trend);
     const daily=demandMonthly/30;
     const stock=p.lager+(S_.countIla?p.ila:0);
-    const incoming=(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0);
+    // Endast leveranser som hinner fram innan en ny veckoorder är säljbar
+    // räknas som tillgängligt. En container längre bort blåser inte längre
+    // upp "Dagar kvar".
+    const incoming=arrivesBefore;
     const onHand=stock+incoming;
 
     // Days the current stock will last
@@ -1938,6 +1974,26 @@ function runVeckaCalc(cfg,today){
     const phaseOut = isOld && isWeak;
     if(phaseOut){
       proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',daysLeft,{phaseOut:true}));
+      continue;
+    }
+
+    // ── BRYGGA fram till nästa leverans ───────────────────────────────
+    // Finns en leverans som landar EFTER att en ny veckoorder hunnit bli
+    // säljbar, ska veckoköpet bara täcka glappet däremellan — inte fylla
+    // till fullt täckningsmål. Att köpa full täckning skulle ge stort
+    // överlager när containern sedan landar, i den dyraste kanalen.
+    //   fönster        = dagar mellan att veckoordern blir säljbar och att
+    //                    nästa leverans blir säljbar
+    //   restlager      = det som fortfarande står kvar när veckoordern landar
+    //   VECKA_KEEP     = hur stor del av restlagret vi vågar räkna med
+    //                    (0.8 = 20 % marginal om försäljningen går fortare)
+    if(nextDay!==null){
+      const windowDays=nextDay-veckaDay;
+      const stockAtVecka=Math.max(0,stock+arrivesBefore-daily*veckaDay);
+      const bridgeNeed=daily*windowDays-stockAtVecka*VECKA_BRIDGE_KEEP;
+      const bq=bridgeNeed>0?rnd5(Math.round(bridgeNeed)):0;
+      if(bq<=0)continue;
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,bq,'bridge',daysLeft,{contQualified,bridgeWindow:windowDays,bridgeDay:nextDay}));
       continue;
     }
 
@@ -2008,9 +2064,7 @@ function runEuCalc(cfg,today){
     const isOld = artCutoff>0 && p.artNr < artCutoff;
     if(isOld && p.y1 < phaseMaxYear){
       // Restnoteringsspärr: en utfasningsartikel som redan är SÅLD utan
-      // täckning (kvarstående brist efter inkommande PO) måste ändå
-      // levereras. Köp EXAKT bristen — ingen buffert, inget påslag — och
-      // behåll utfasningsflaggan så den även hamnar på Slutförsäljningslistan.
+      // täckning måste ändå levereras. Köp EXAKT bristen.
       const restQty = onHand<0 ? -onHand : 0;
       proposals.push(mkVeckaProp(p,trend,demandMonthly,restQty,'phaseout',daysLeft,{phaseOut:true,eu:true}));
       continue;
@@ -2086,6 +2140,7 @@ function mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,extra){
     daysLeft, daysLeftTotal:daysLeft, daysToContainer:daysLeft,
     inPO:hasActivePO(p.filePOs), sim:null,
     veckaMode:mode, phaseOut:!!extra.phaseOut, contQualified:!!extra.contQualified,
+    bridgeWindow:extra.bridgeWindow||0, bridgeDay:extra.bridgeDay||0,
     suggestQty:qty, warns:[]
   };
 }
@@ -2094,6 +2149,7 @@ function getVeckaWarnings(p){
   const w=[];
   if(p.contQualified) w.push(`25+/år utan båtorder — hör hemma på Shalin Container. Veckoköpet täcker bara tills containerordern är lagd — lägg den på nästa container.`);
   if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
+  else if(p.veckaMode==='bridge') w.push(`Brygga: nästa leverans är säljbar om ${p.bridgeDay} dagar. Köper bara glappet på ${p.bridgeWindow} dagar — inte full täckning, så du slipper överlager när den landar.`);
   else if(p.veckaMode==='proven') w.push(`Bevisad (10+ på 3 mån) — 50 dagars täckning.`);
   else if(p.uBat>=5&&p.m1>p.m3/3) w.push(`Stark månad — trappar upp till 5 st.`);
   if(p.poBatTotal>0) w.push(`${p.poBatTotal} st redan på väg.`);
