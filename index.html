@@ -1323,6 +1323,7 @@ function updatePOField(i,field,val){
   const se=document.getElementById('sell-'+i);
   if(se){se.textContent=poList[i].sellable||'— ange ETA';se.style.color=poList[i].sellable?'#0F6E56':'#888';}
   savePOs();showSaved('po-saved-tag');
+  renderPOUndatedSummary(); // rita om varningen direkt, annars ligger den kvar
 }
 function toggleSel(i,c){
   if(c)selected.add(i);else selected.delete(i);
@@ -1700,7 +1701,10 @@ function getUndatedLinkedPOs(){
   const bad=[];
   Object.keys(linked).forEach(n=>{
     const po=poList.find(pl=>normPN(pl.po)===n);
-    const dated=po&&po.sellable&&isValidDate(po.sellable);
+    // Härled ur ETA i stället för det sparade sellable-fältet. sellable
+    // sätts först av resyncPODates(), så varningen kunde annars påstå att
+    // redan daterade ordrar saknade datum.
+    const dated=!!(po&&po.eta&&isValidDate(po.eta));
     if(!dated) bad.push({po:po?po.po:n, qty:linked[n], inRegister:!!po});
   });
   return bad.sort((a,b)=>b.qty-a.qty);
@@ -1712,17 +1716,19 @@ function runCalc(){
   if((parseInt(gv('s-artcut'))||0)===0){
     if(!confirm('Utfasningsgränsen är 0 — INGEN utfasning sker och gamla svaga produkter kan få inköpsförslag.\n\nVill du verkligen beräkna utan utfasning?'))return;
   }
-  // Tomt container-datum + PO:er i registret => produkter med order på väg skulle
-  // få en godtycklig fallback-horisont (134 dgr). Stoppa innan det sker tyst.
-  if(!isWeekly() && !gv('s-cont')){
-    const withPO=(products||[]).filter(p=>p.filePOs&&p.filePOs.length>0).length;
-    if(withPO>0){
-      alert('Fyll i "Nästa container anländer (säljbar hos er)" först.\n\n'+withPO+' produkter har inköpsorder på väg. Utan datum använder verktyget en godtycklig horisont på 134 dagar för dem, vilket ger fel orderförslag.\n\nAnge säljbar-datumet för den container som fyller på dessa produkter (ETA + dagar till hylla).');
-      const el=document.getElementById('s-cont');if(el){goTo(2);setTimeout(()=>el.focus(),100);}
+  resyncPODates(); // ← räkna om sparade ETA:n INNAN vi validerar och beräknar
+  // Enda kontrollen som behövs: en PO utan giltig ETA kan inte tidsättas och
+  // krediteras därför inte alls i simuleringen → produkten dubbelbeställs.
+  // (Det gamla "Nästa container"-fältet styr inte längre någon horisont.)
+  if(!isWeekly()){
+    const undated=getUndatedLinkedPOs();
+    if(undated.length>0){
+      const list=undated.map(b=>`  #${b.po} — ${b.qty} st${b.inRegister?' (saknar ETA)':' (saknas i PO-registret)'}`).join('\n');
+      alert('Dessa inköpsorder kan inte räknas av:\n\n'+list+'\n\nFyll i ETA och dagar till hylla i steg 2 — annars dubbelbeställs produkterna.');
+      goTo(1);
       return;
     }
   }
-  resyncPODates(); // ← ensure saved ETAs are reflected before calculating
   const cfg={
     contDate:gv('s-cont'),
     seaLead:parseInt(gv('s-sea'))||134,
@@ -1783,19 +1789,24 @@ function runCalc(){
     const deliveries=getPODeliveries(p.filePOs);
     const poBatTotal=deliveries.reduce((s,d)=>s+d.qty,0);
 
-    // ── Två horisonter (Cheng): produkter MED order på väg fylls på av den
-    // redan skickade containern (container-datumet). Produkter UTAN order på
-    // väg måste beställas nytt nu — det tar ny-order-ledtiden till hyllan,
-    // och den skiljer sig per familj (Genuine/3Card vs Övriga). Flyg-bryggan
-    // sträcks då hela vägen till den bortre horisonten så inget glapp uppstår.
-    let horizonDays = daysToContainer; // default: har PO → container-datum
-    if(deliveries.length===0){
-      const fam=getFamily(p); // 'genuine' | '3card' | 'other'
-      const leadGen=parseInt(gv('s-newlead'))||120;
-      const leadOth=parseInt(gv('s-newlead-oth'))||leadGen;
-      const newLead=(fam==='other')?leadOth:leadGen;
-      horizonDays=Math.max(1,newLead);
-    }
+    // ── EN horisont: den dag ordern vi lägger IDAG blir säljbar ────────
+    // Tidigare fanns "två horisonter": produkter med order på väg fick den
+    // REDAN SKICKADE containerns datum, produkter utan fick ny-order-ledtiden.
+    // Det blandade ihop två olika containrar och blev fel åt båda håll:
+    //   • Produkter med order på väg UNDERbeställdes — verktyget mätte lagret
+    //     den dag den gamla containern landade, alltså innan de varorna hunnit
+    //     säljas. Kvantiteten vi beställer nu ska täcka tiden EFTER att den
+    //     NYA containern kommer, och då är de gamla varorna sedan länge slut.
+    //   • Produkter vars leverans låg bortom den globala containerdagen
+    //     ÖVERbeställdes — leveransen krediterades inte alls.
+    // Rätt modell: horisonten är alltid när DEN HÄR ordern blir säljbar.
+    // Allt som redan är på väg krediteras på sin egen dag av simulateStock,
+    // via ETA + dagar till hylla i PO-registret. Registret är enda källan
+    // för leveranstider — inget globalt containerdatum behövs.
+    const fam=getFamily(p); // 'genuine' | '3card' | 'other'
+    const leadGen=parseInt(gv('s-newlead'))||120;
+    const leadOth=parseInt(gv('s-newlead-oth'))||leadGen;
+    const horizonDays=Math.max(1,(fam==='other')?leadOth:leadGen);
 
     // Simulate stock through to the chosen horizon
     // ila counted as available only when supplier config allows
