@@ -329,20 +329,20 @@ tr.removed td{opacity:.35}
     </div>
 
     <div class="settings-grid">
-      <div class="fi" style="position:relative" id="fw-cont">
+      <div class="fi" style="position:relative;display:none" id="fw-cont">
         <label>Nästa container anländer (säljbar hos er) <button class="help-btn" onclick="toggleTip('t-cont')">?</button></label>
         <input type="date" id="s-cont" min="2024-01-01" max="2030-12-31" onchange="saveCfg()">
         <div id="t-cont" class="tooltip"><strong>Nästa container-datum</strong><br>Datumet du kan börja sälja — ETA + inleveranstid. Krockar inte med båt-ledtiden.<div class="ex">Container anländer hamn 1 okt · 14 dagar inlev → skriv 2026-10-15</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-postcont">
         <label>Räkna in inkommande order som landar inom X dagar efter container <button class="help-btn" onclick="toggleTip('t-postcont')">?</button></label>
-        <input type="number" id="s-postcont" value="14" min="0" max="60" onchange="saveCfg()">
+        <input type="number" id="s-postcont" value="0" min="0" max="60" onchange="saveCfg()">
         <div id="t-postcont" class="tooltip"><strong>Order strax efter container</strong><br>En inkommande order som blir säljbar kort efter container-datumet finns i praktiken redan på plats för perioden. Detta fält säger hur många dagar efter container en sådan order ändå ska räknas som befintligt lager, så att förslaget inte blåses upp.<div class="ex">Container 22 okt, fält = 14 → en order säljbar 23 okt räknas in. 0 = endast order t.o.m. container-dagen (striktast).</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-newlead">
         <label>Ny-order-ledtid Genuine/3Card (dagar) <button class="help-btn" onclick="toggleTip('t-newlead')">?</button></label>
         <input type="number" id="s-newlead" value="120" min="30" max="200" onchange="saveCfg()">
-        <div id="t-newlead" class="tooltip"><strong>Ledtid för produkter UTAN order på väg</strong><br>En produkt som inte har någon inköpsorder i datan har inget på väg — beställer du idag tar det så här många dagar till hyllan. Flyg-bryggan sträcks hela vägen dit så du inte står tom. Genuine och 3 Card ligger normalt på ~120 dagar.<div class="ex">Produkter MED order på väg använder container-datumet ovan istället.</div></div>
+        <div id="t-newlead" class="tooltip"><strong>Ledtid för produkter UTAN order på väg</strong><br>En produkt som inte har någon inköpsorder i datan har inget på väg — beställer du idag tar det så här många dagar till hyllan. Flyg-bryggan sträcks hela vägen dit så du inte står tom. Genuine och 3 Card ligger normalt på ~120 dagar.<div class="ex">Gäller ALLA produkter. Det som redan är på väg krediteras på sin egen dag ur PO-registret.</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-newlead-oth">
         <label>Ny-order-ledtid Övriga (dagar) <button class="help-btn" onclick="toggleTip('t-newlead-oth')">?</button></label>
@@ -457,7 +457,7 @@ tr.removed td{opacity:.35}
     </span>
     <div class="filter-sep"></div>
     <label class="cb-item"><input type="checkbox" id="f-warn-only" onchange="renderTable()"> Bara varningar ⚠️</label>
-    <label class="cb-item" id="f-crit-wrap"><input type="checkbox" id="f-crit-only" onchange="renderTable()"> Tar slut före container 🔴</label>
+    <label class="cb-item" id="f-crit-wrap"><input type="checkbox" id="f-crit-only" onchange="renderTable()"> <span id="crit-lbl">Tar slut före container 🔴</span></label>
     <input type="text" id="f-search" class="filter-search" placeholder="Sök art.nr eller namn..." oninput="renderTable()">
     <span style="margin-left:auto;font-size:11px;color:#888" id="row-count"></span>
   </div>
@@ -643,12 +643,12 @@ const SUPPLIERS={
     phaseOutMinArt:0,
     uiText:{
       modeLabel:'Orderläge för Shalin Container',
-      modeDesc:'Container 4–5 ggr/år. Bara produkter som sålt 25+/år köps via container, med flyg-brygga som fyller tills containern kommer.',
+      modeDesc:'Container 4–5 ggr/år. Bara produkter som sålt 25+/år köps via container. Glappet fram till containern täcks av Shalin Vecka (~33 dgr till hylla mot flygets 52, samma fraktkostnad) — ingen flyg-brygga läggs här.',
       flyLabel:'Flyg-ledtid Shalin (dagar)',
       minYearLabel:'Minsta årsförsäljning för container',
       cards:[
-        {t:'Klass A', r:'≥ 30 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
-        {t:'Klass B', r:'25–29 st/år', d:'7 mån täckning<br>Flyg-brygga: auto'},
+        {t:'Klass A', r:'≥ 30 st/år', d:'7 mån täckning<br>Glapp täcks av Vecka'},
+        {t:'Klass B', r:'25–29 st/år', d:'7 mån täckning<br>Glapp täcks av Vecka'},
         {t:'Under 25/år', r:'< 25 st/år', d:'Ingen container<br>→ hanteras av Vecka'},
         {t:'Lager', r:'Til = säljbart', d:'Reserverat borträknat<br>(Ila räknas ej)'}
       ]
@@ -1573,8 +1573,16 @@ function rndNearest(n){
 function getWarnings(p){
   const w=[];
   const avg=p.demandMonthly;
-  if(p.sim&&p.sim.firstStockout>=0&&p.uAir===0&&!p.otype.includes('air'))
-    w.push(`Lagret tar slut dag ${p.sim.firstStockout} — flyg-brygga saknas. Kontrollera manuellt.`);
+  // Tar slut före containern. Med flygbryggan avstängd (Shalin) täcks glappet
+  // av veckoköpet — då är det ingen avvikelse och ska inte be någon
+  // "kontrollera manuellt". Hos Cheng, som saknar veckokanal, är det en
+  // verklig avvikelse som kräver åtgärd.
+  if(p.sim&&p.sim.firstStockout>=0&&p.uAir===0&&!p.otype.includes('air')){
+    if(S().useAirBridge===false)
+      w.push(`Lagret tar slut dag ${p.sim.firstStockout} — täcks av veckoköpet, ingen åtgärd här.`);
+    else
+      w.push(`Lagret tar slut dag ${p.sim.firstStockout} — flyg-brygga saknas. Kontrollera manuellt.`);
+  }
   if(p.trend==='down'&&p.uBat>avg*5)
     w.push(`Stor båtorder (${p.uBat} st) på nedåtgående produkt — säljer ca ${Math.round(avg)}/mån.`);
   if(p.poBatTotal>p.y1*0.6&&p.poBatTotal>30)
@@ -2349,7 +2357,9 @@ function renderMetrics(){
   document.getElementById('metrics').innerHTML=
     `<div class="metric"><div class="lbl">Båt</div><div class="val">${act.filter(p=>p.otype.includes('bat')).length}</div></div>`+
     `<div class="metric"><div class="lbl">Flyg-brygga</div><div class="val">${act.filter(p=>p.otype.includes('air')).length}</div></div>`+
-    `<div class="metric" style="${crit>0?'background:#fcebeb;border-color:#f7c1c1':''}"><div class="lbl">Tar slut före cont.</div><div class="val" style="color:${crit>0?'#a32d2d':''}">${crit}</div></div>`+
+    (S().useAirBridge===false
+      ? `<div class="metric"><div class="lbl">Täcks av Vecka</div><div class="val" style="color:#0F6E56">${crit}</div></div>`
+      : `<div class="metric" style="${crit>0?'background:#fcebeb;border-color:#f7c1c1':''}"><div class="lbl">Tar slut före cont.</div><div class="val" style="color:${crit>0?'#a32d2d':''}">${crit}</div></div>`)+
     `<div class="metric" style="${warn>0?'background:#fffbf0;border-color:#FAC775':''}"><div class="lbl">Varningar</div><div class="val" style="color:${warn>0?'#854F0B':''}">${warn}</div></div>`+
     `<div class="metric"><div class="lbl">Klasser</div><div style="font-size:12px;margin-top:6px"><span style="color:#0F6E56;font-weight:600">A:${aCount}</span> <span style="color:#185FA5;font-weight:600">B:${bCount}</span> <span style="color:#854F0B;font-weight:600">C+:${cpCount}</span> <span style="color:#888;font-weight:600">C:${cCount}</span></div></div>`;
 }
