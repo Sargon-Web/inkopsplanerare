@@ -635,6 +635,7 @@ const SUPPLIERS={
     // Container-grind: bara produkter som sålt minYearForContainer+/år
     // får en container-order. Allt därunder hanteras av Shalin Vecka.
     minYearForContainer:25,     // justerbar (kan sänkas till t.ex. 20)
+    useAirBridge:false,         // glappet täcks av Shalin Vecka, se runCalc
     airBridgeMinMonths:1,
     airBridgeMinUnits:5,
     minYearForBat:25,
@@ -659,7 +660,7 @@ const SUPPLIERS={
     countIla:false,            // Til = säljbart
     modes:['vecka'],           // eget veckoläge (varken båt eller flyg-brygga)
     leadDefaults:{sea:0,air:25,fly:25,cont:0}, // ~25 dagar order→säljbar
-    veckaLead:25,              // ledtid tills en veckoorder är säljbar
+    veckaLead:33,              // 14 (lev) + 7-10 (frakt) + 7-14 (inlev) till hylla              // ledtid tills en veckoorder är säljbar
     classThresholds:{A:30,B:15,Cp:10,C:2},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     // ── Vecka-specifika regler ──
@@ -1812,7 +1813,7 @@ function runCalc(){
     // ila counted as available only when supplier config allows
     // airLead passed so air bridge ignores gaps that close before a new flight could land
     const postContWin=parseInt(gv('s-postcont'));
-    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, horizonDays, cfg.airLead, isNaN(postContWin)?14:postContWin);
+    const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, horizonDays, cfg.airLead, isNaN(postContWin)?0:postContWin);
 
     // Days left (stock only, without PO)
     const daysLeft=calcDaysLeftStock(p.lager,daily);
@@ -1851,7 +1852,12 @@ function runCalc(){
       const airThreshold=demandMonthly*airMinMonths;
       const runsDry=sim.stockoutDay!=null&&sim.stockoutDay>=0; // hits zero before container
       const passesGates=sim.airGap>=airThreshold && sim.airGap>=airUnitFloor;
-      if(sim.airGap>0 && (passesGates || runsDry)){
+      // useAirBridge=false: leverantören har en snabbare egen kanal (Shalin
+      // Vecka, ~33 dgr till hylla mot flygets 52) till samma fraktkostnad.
+      // Flygbryggan är då strikt sämre: långsammare, lika dyr, och kan inte
+      // stoppas om containern kommer tidigt. Glappet täcks av veckoköpet.
+      // Cheng saknar veckokanal och behåller bryggan.
+      if(S().useAirBridge!==false && sim.airGap>0 && (passesGates || runsDry)){
         airQ=rnd5(Math.round(sim.airGap));
       }
 
@@ -2004,6 +2010,10 @@ function runVeckaCalc(cfg,today){
     //   restlager      = det som fortfarande står kvar när veckoordern landar
     //   VECKA_KEEP     = hur stor del av restlagret vi vågar räkna med
     //                    (0.8 = 20 % marginal om försäljningen går fortare)
+    // Beräkna det normala behovet först — bryggan blir bara ett TAK på det.
+    const normalNeed = (p.m3>=provenM3)
+      ? Math.ceil(daily*provenCover)-onHand
+      : ((p.m1>=stepSmall && p.m1>=(p.m3/3)) ? stepBig : stepSmall);
     if(nextDay!==null){
       const windowDays=nextDay-veckaDay;
       // Restlager när veckoordern landar. Måste simuleras dag för dag:
@@ -2017,7 +2027,13 @@ function runVeckaCalc(cfg,today){
       });
       sv+=undatedQty;                                   // odaterade = redan hemma
       const stockAtVecka=Math.max(0,sv-daily*(veckaDay-last));
-      const bridgeNeed=daily*windowDays-stockAtVecka*VECKA_BRIDGE_KEEP;
+      // Bryggan är ett TAK, inte ett eget mål. Utan taket skulle ett långt
+      // glapp (t.ex. container 91 dagar bort) läggas i EN veckoorder — mer
+      // kapital än flygbryggan och tvärtemot poängen med att köpa veckovis.
+      // Med taket beställs som vanligt, men aldrig mer än glappet kräver.
+      // Ingen behöver då resonera om containerdatum: verktyget kapar själv.
+      const bridgeCap=daily*windowDays-stockAtVecka*VECKA_BRIDGE_KEEP;
+      const bridgeNeed=Math.min(normalNeed,bridgeCap);
       const bq=bridgeNeed>0?rnd5(Math.round(bridgeNeed)):0;
       if(bq<=0)continue;
       proposals.push(mkVeckaProp(p,trend,demandMonthly,bq,'bridge',daysLeft,{contQualified,bridgeWindow:windowDays,bridgeDay:nextDay}));
