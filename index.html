@@ -304,7 +304,7 @@ tr.removed td{opacity:.35}
       <button class="btn" onclick="toggleEl('cfg-help')">? Hjälp</button>
     </div>
     <div id="cfg-help" style="display:none" class="alert alert-info">
-      ℹ️ <div><strong>Nästa container-datum och båt-ledtid krockar inte.</strong><br>Container-datumet = din redan beställda container som du vet när den anländer.<br>Båt-ledtiden = grundregel för att beräkna hur mycket du behöver beställa nu.<br><br>Exempel: 15/mån · 130 dagar till container + 4 mån cover = 250 dagars behov. Lager 50 + PO 30 = 80 → beställ 170 st → avrundat till 170.</div>
+      ℹ️ <div><strong>Så räknas orderförslaget.</strong><br>Horisonten är alltid den dag <em>den här</em> ordern blir säljbar hos er — ny-order-ledtiden nedan.<br>Allt som redan är på väg krediteras på sin egen dag ur PO-registret (ETA + dagar till hylla).<br>Kvantiteten = täckningsmålet minus det lager som återstår när ordern landar.<br><br>Exempel: 15/mån · 5 mån täckning = 75 st behövs. Lager vid ankomst 20 → beställ 55 st.</div>
     </div>
 
     <div style="margin-bottom:1.25rem" id="mode-block">
@@ -332,17 +332,17 @@ tr.removed td{opacity:.35}
       <div class="fi" style="position:relative;display:none" id="fw-cont">
         <label>Nästa container anländer (säljbar hos er) <button class="help-btn" onclick="toggleTip('t-cont')">?</button></label>
         <input type="date" id="s-cont" min="2024-01-01" max="2030-12-31" onchange="saveCfg()">
-        <div id="t-cont" class="tooltip"><strong>Nästa container-datum</strong><br>Datumet du kan börja sälja — ETA + inleveranstid. Krockar inte med båt-ledtiden.<div class="ex">Container anländer hamn 1 okt · 14 dagar inlev → skriv 2026-10-15</div></div>
+        <div id="t-cont" class="tooltip"><strong>Används inte längre</strong><br>Leveransdatum hämtas numera per inköpsorder ur PO-registret (steg 2). Fältet kan lämnas tomt.</div>
       </div>
       <div class="fi" style="position:relative" id="fw-postcont">
         <label>Räkna in inkommande order som landar inom X dagar efter container <button class="help-btn" onclick="toggleTip('t-postcont')">?</button></label>
         <input type="number" id="s-postcont" value="0" min="0" max="60" onchange="saveCfg()">
-        <div id="t-postcont" class="tooltip"><strong>Order strax efter container</strong><br>En inkommande order som blir säljbar kort efter container-datumet finns i praktiken redan på plats för perioden. Detta fält säger hur många dagar efter container en sådan order ändå ska räknas som befintligt lager, så att förslaget inte blåses upp.<div class="ex">Container 22 okt, fält = 14 → en order säljbar 23 okt räknas in. 0 = endast order t.o.m. container-dagen (striktast).</div></div>
+        <div id="t-postcont" class="tooltip"><strong>Order strax efter horisonten</strong><br>Hur många dagar efter att den nya ordern landat en annan inkommande leverans ändå får räknas som befintligt lager.<div class="ex">Rekommenderat: 0. Högre värde räknar in varor som ännu inte kommit och gör förslaget för litet.</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-newlead">
         <label>Ny-order-ledtid Genuine/3Card (dagar) <button class="help-btn" onclick="toggleTip('t-newlead')">?</button></label>
         <input type="number" id="s-newlead" value="120" min="30" max="200" onchange="saveCfg()">
-        <div id="t-newlead" class="tooltip"><strong>Ledtid för produkter UTAN order på väg</strong><br>En produkt som inte har någon inköpsorder i datan har inget på väg — beställer du idag tar det så här många dagar till hyllan. Flyg-bryggan sträcks hela vägen dit så du inte står tom. Genuine och 3 Card ligger normalt på ~120 dagar.<div class="ex">Gäller ALLA produkter. Det som redan är på väg krediteras på sin egen dag ur PO-registret.</div></div>
+        <div id="t-newlead" class="tooltip"><strong>Ny-order-ledtid — dagar tills DENNA order är säljbar</strong><br>Styr horisonten för alla produkter. Beställer du idag tar det så här många dagar till hyllan. Genuine och 3 Card ligger normalt på ~120 dagar.<div class="ex">Gäller ALLA produkter. Det som redan är på väg krediteras på sin egen dag ur PO-registret.</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-newlead-oth">
         <label>Ny-order-ledtid Övriga (dagar) <button class="help-btn" onclick="toggleTip('t-newlead-oth')">?</button></label>
@@ -352,7 +352,7 @@ tr.removed td{opacity:.35}
       <div class="fi" style="position:relative" id="fw-sea">
         <label>Båt-ledtid till hylla (dagar) <button class="help-btn" onclick="toggleTip('t-sea')">?</button></label>
         <input type="number" id="s-sea" value="155" min="100" max="220" onchange="saveCfg()">
-        <div id="t-sea" class="tooltip"><strong>Båt-ledtid — grundregel</strong><br>Används för framtida beräkningar, krockar inte med container-datumet.<div class="ex">30 prod + 20 väntan + 90 sjö + 14 inlev = 154 → sätt 155</div></div>
+        <div id="t-sea" class="tooltip"><strong>Båt-ledtid till hylla</strong><br>Referensvärde. Horisonten styrs av ny-order-ledtiden ovan.<div class="ex">30 prod + 20 väntan + 90 sjö + 14 inlev = 154 → sätt 155</div></div>
       </div>
       <div class="fi" style="position:relative" id="fw-air">
         <label id="air-label-wrap">Flyg-ledtid Genuine/3Card (dagar) <button class="help-btn" onclick="toggleTip('t-air')">?</button></label>
@@ -426,7 +426,7 @@ tr.removed td{opacity:.35}
   <div class="metric-row" id="metrics"></div>
   <div class="filter-bar">
     <label id="otype-label" style="position:relative">Ordertyp: <button class="help-btn" onclick="toggleTip('t-otype')">?</button>
-      <div id="t-otype" class="tooltip" style="font-weight:400"><strong>Vad betyder typerna?</strong><br><b>Båt / Flyg-brygga</b> (Cheng, Container): container-order och flyg som fyller på tills den kommer.<br><b>Veckoköp</b> (Vecka): liten påfyllning denna vecka.<br><b>Utfasning</b> (Vecka): gammal svagsäljare som föreslås för slutförsäljning — köps ej.<div class="ex">Bocka ur en typ för att dölja den i listan.</div></div>
+      <div id="t-otype" class="tooltip" style="font-weight:400"><strong>Vad betyder typerna?</strong><br><b>Båt / Flyg-brygga</b> (Cheng): container-order och flyg som fyller på tills den kommer. Shalin Container lägger ingen flyg-brygga — där täcks glappet av Shalin Vecka.<br><b>Veckoköp</b> (Vecka): liten påfyllning denna vecka.<br><b>Utfasning</b> (Vecka): gammal svagsäljare som föreslås för slutförsäljning — köps ej.<div class="ex">Bocka ur en typ för att dölja den i listan.</div></div>
     </label>
     <div class="cb-group" id="otype-group">
       <label class="cb-item" id="f-bat-wrap"><input type="checkbox" id="f-bat" checked onchange="renderTable()"> <span class="badge bb" id="f-bat-lbl">Båt</span></label>
@@ -627,9 +627,14 @@ const SUPPLIERS={
     leadDefaults:{sea:120,air:52,fly:52,cont:120},
     classThresholds:{A:30,B:15,Cp:10,C:2},
     emerging:{bM1:5,bM3avg:3,cpM1:2,cpM3avg:1.5},
-    // A & B = 7 mån fast täckning (containrar går oregelbundet/glest,
-    // 7 mån buffrar även längsta glappet; ingen trendjustering behövs)
-    coverMonths:{A:{up:7,down:7,stable:7},B:7,Cp:{down:0,stable:0},C:0,D:0},
+    // A & B = 6/5/4 mån efter trend. Containern täcker tiden till nästa
+    // container (~4-5 mån); marginalen mot underköp ligger i veckoköpet.
+    // Täckning = tiden till NÄSTA container landar (~4-5 mån) + marginal.
+    // Uppåt får 6: båtfrakt är mycket billigare än veckoköpets flyg, så om
+    // tillväxten är äkta lönar det sig att ta den på båten. Nedåt får 4:
+    // där gör varje överbliven enhet mest skada. Säkerheten mot underköp
+    // ligger i veckoköpet, som är på hyllan på ~33 dagar.
+    coverMonths:{A:{up:6,down:4,stable:5},B:{up:6,down:4,stable:5},Cp:{down:0,stable:0},C:0,D:0},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     safetyNet:{enabled:false},
     // Container-grind: bara produkter som sålt minYearForContainer+/år
@@ -647,8 +652,8 @@ const SUPPLIERS={
       flyLabel:'Flyg-ledtid Shalin (dagar)',
       minYearLabel:'Minsta årsförsäljning för container',
       cards:[
-        {t:'Klass A', r:'≥ 30 st/år', d:'7 mån täckning<br>Glapp täcks av Vecka'},
-        {t:'Klass B', r:'25–29 st/år', d:'7 mån täckning<br>Glapp täcks av Vecka'},
+        {t:'Klass A', r:'≥ 30 st/år', d:'Täckning 6 / 5 / 4 mån<br>(upp / stabil / ned)<br>Glapp täcks av Vecka'},
+        {t:'Klass B', r:'25–29 st/år', d:'Täckning 6 / 5 / 4 mån<br>(upp / stabil / ned)<br>Glapp täcks av Vecka'},
         {t:'Under 25/år', r:'< 25 st/år', d:'Ingen container<br>→ hanteras av Vecka'},
         {t:'Lager', r:'Til = säljbart', d:'Reserverat borträknat<br>(Ila räknas ej)'}
       ]
@@ -783,7 +788,9 @@ function renderBlueprint(){
     ['Ny-order-ledtid Genuine/3Card',bpVal(ch.newlead,'120')+' dagar'],
     ['Ny-order-ledtid Övriga',bpVal(ch.newleadOth,'120')+' dagar'],
     ['Flyg-brygga','Läggs bara om lagret tar slut före containern, och gapet är ≥1 mån försäljning och ≥5 st (eller om produkten helt tar slut)'],
-    ['Order efter container',bpVal(ch.postcont,'14')+' dagar — inkommande order som landar inom denna period efter container räknas som befintligt lager (undviker uppblåst förslag)'],
+    ['Horisont','Ny-order-ledtiden — dagen DENNA order blir säljbar. Leveranstider hämtas per order ur PO-registret.'],
+    ['Efterfrågemått','Samma konservativa långtidsmått som Shalin Container (se nedan).'],
+    ['Order efter horisont',bpVal(ch.postcont,'0')+' dagar — rekommenderat 0.'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
   ];
@@ -791,14 +798,13 @@ function renderBlueprint(){
   // ── Shalin Container ──
   const sc=cfgFor('shalin_cont');
   const contRows=[
-    ['Flöde','Container 4–5 ggr/år + flyg-brygga tills containern kommer'],
+    ['Flöde','Container 4–5 ggr/år. INGEN flyg-brygga — glappet fram till containern täcks av Shalin Vecka (~33 dgr till hylla mot flygets 52, samma fraktkostnad, och kan stoppas om containern kommer tidigt).'],
     ['Vilka produkter','Endast 25+/år (justerbar tröskel). Resten → Shalin Vecka.'],
     ['Container-tröskel',bpVal(sc.miny,'25')+'/år'],
-    ['Täckning','A och B: 7 månader (fast, ingen trendjustering)'],
-    ['Container-datum',bpVal(sc.cont,'sätts per körning')],
-    ['Flyg-ledtid',bpVal(sc.air,'52')+' dagar'],
-    ['Flyg-brygga','Fyller på tills containern är säljbar'],
-    ['Order efter container',bpVal(sc.postcont,'14')+' dagar — inkommande order som landar inom denna period efter container räknas som befintligt lager'],
+    ['Täckning','A och B: 6 mån (trend upp) · 5 mån (stabil) · 4 mån (trend ned). Täcker tiden till nästa container; marginalen mot underköp ligger i veckoköpet.'],
+    ['Horisont','Ny-order-ledtiden — dagen DENNA order blir säljbar. Inget globalt container-datum används; leveranstider hämtas per order ur PO-registret (ETA + dagar till hylla).'],
+    ['Efterfrågemått','Lång bindning → konservativt: 0,2×1mån + 0,4×3mån + 0,4×år, aldrig under 3-månaderstakten. En enskild het månad får alltså inte driva en halvårsorder. UNDANTAG: ny produkt (nästan hela årsförsäljningen i senaste kvartalet) — där styr senaste takten.'],
+    ['Order efter horisont',bpVal(sc.postcont,'0')+' dagar — rekommenderat 0.'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja. Ger en utfasningslista från samma data.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sc.artcut,'sätts per körning')],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
@@ -814,7 +820,9 @@ function renderBlueprint(){
     ['Köpmängd — svag månad','3 st (bas)'],
     ['Köpmängd — stark månad','5 st (kräver: sålt ≥3 senaste månaden OCH inte avtagande)'],
     ['Bevisad produkt','Sålt 10+ på 3 mån → 50 dagars täckning istället'],
-    ['Ledtid Vecka',bpVal(sv.fly,'25')+' dagar'],
+    ['Ledtid Vecka',bpVal(sv.fly,'33')+' dagar (14 hos leverantör + 7–10 frakt + 7–14 inleverans)'],
+    ['Brygga mot kommande leverans','Finns en leverans som landar efter att veckoordern hunnit fram, kapas köpet vid vad glappet kräver — aldrig mer. Ingen behöver hålla reda på container-datum.'],
+    ['Roll i helheten','Täcker glappet fram till containern för Shalin Container-produkter. Därför läggs ingen flyg-brygga där.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sv.artcut,'sätts per körning')],
     ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, flaggas Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
@@ -839,7 +847,7 @@ function renderBlueprint(){
 
   let html='';
   html+=box('Cheng','Aktiv','#0F6E56',chengRows,'Skarpt validerad. Genuine + 3 Card körda med riktiga order.');
-  html+=box('Shalin Container','Aktiv','#185FA5',contRows,'Verifierad 279/279 mot data.');
+  html+=box('Shalin Container','Aktiv','#185FA5',contRows,'Verifierad 232/232 artiklar mot data (3 sep 2026). Flyg-brygga avstängd; glappet täcks av Vecka.');
   html+=box('Shalin Vecka','Aktiv','#854F0B',veckaRows,'Verifierad: 503/505 köp, 1015/1015 utfasning.');
   html+=box('EU — leverantörer','Aktiv','#6D28D9',euRows,'Dropship-modell. Negativt saldo driver inköp.');
   html+=box('Sverige','Ej byggd','#bbb',null,'Regelverk ej fastställt. Vissa Sverige-produkter dropshippas som EU — byggs efter samma mönster.');
@@ -894,7 +902,7 @@ function applySupDefaults(){
   const d=S().leadDefaults;
   const set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
   set('s-sea',d.sea);set('s-air',d.air);set('s-fly',d.fly);
-  set('s-postcont',14); // credit POs landing up to 14 days after container by default
+  set('s-postcont',0);  // horisonten är numera ny-order-ledtiden; inget efterfönster behövs
   // min-year threshold: container gate, boat threshold, or vecka container cutoff
   const minY=S().minYearForContainer!=null?S().minYearForContainer
             :(S().veckaContainerThreshold!=null?S().veckaContainerThreshold:S().minYearForBat);
@@ -1523,6 +1531,24 @@ function getDemand(p,trend){
   return weighted;
 }
 
+// Efterfrågan för LÅNGA bindningar (båtordern, 4-6 månaders täckning).
+// getDemand tar MAX(viktat, 1m, 3m) vid trend upp — bra för veckoköp som
+// rättar sig på 33 dagar, men farligt för en halvårsorder: en enda het
+// månad kan då driva hela kvantiteten. Här vägs de långa fönstren tyngre
+// och 3-månaderstakten är golv, så måttet aldrig hamnar under det som
+// faktiskt sålts i kvartalet.
+// UNDANTAG: en genuint NY produkt (nästan hela årsförsäljningen ligger i
+// senaste kvartalet) har ingen historik att väga mot — där får den senaste
+// takten styra, precis som förut.
+function getLongDemand(p,trend){
+  const short=getDemand(p,trend);
+  const isNew = p.y1 <= p.m3*2;
+  if(isNew) return short;
+  const a3=p.m3/3, a12=p.y1/12;
+  const long=0.2*p.m1+0.4*a3+0.4*a12;
+  return Math.min(short, Math.max(long, a3));
+}
+
 function getTrend(p,cfg){
   const q=p.m3>0?p.m1/(p.m3/3):(p.m1>0?2:0);
   return q>=cfg.tup?'up':q<cfg.tdn?'down':'stable';
@@ -1766,7 +1792,7 @@ function runCalc(){
     if(p.y1===0&&p.m3===0&&p.m1===0)continue;
 
     const trend=getTrend(p,cfg);
-    const demandMonthly=getDemand(p,trend);
+    const demandMonthly=getLongDemand(p,trend); // lång bindning → konservativt mått
     const daily=demandMonthly/30;
     const klass=classify(p);
     const coverMonths=getCoverMonths(klass,trend);
