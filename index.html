@@ -803,7 +803,7 @@ function renderBlueprint(){
     ['Container-tröskel',bpVal(sc.miny,'25')+'/år'],
     ['Täckning','A och B: 6 mån (trend upp) · 5 mån (stabil) · 4 mån (trend ned). Täcker tiden till nästa container; marginalen mot underköp ligger i veckoköpet.'],
     ['Horisont','Ny-order-ledtiden — dagen DENNA order blir säljbar. Inget globalt container-datum används; leveranstider hämtas per order ur PO-registret (ETA + dagar till hylla).'],
-    ['Efterfrågemått','Lång bindning → konservativt: 0,2×1mån + 0,4×3mån + 0,4×år, aldrig under 3-månaderstakten. En enskild het månad får alltså inte driva en halvårsorder. UNDANTAG: ny produkt (nästan hela årsförsäljningen i senaste kvartalet) — där styr senaste takten.'],
+    ['Efterfrågemått','Lång bindning → konservativt: 0,2×1mån + 0,4×3mån + 0,4×år, aldrig under 3-månaderstakten. En enskild het månad får alltså inte driva en halvårsorder. UNDANTAG: genuint ny produkt — sålde under 1,5 st/mån under månad 4-12, alltså för lite historik för att årssiffran ska betyda något. Där styr senaste takten.'],
     ['Order efter horisont',bpVal(sc.postcont,'0')+' dagar — rekommenderat 0.'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja. Ger en utfasningslista från samma data.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sc.artcut,'sätts per körning')],
@@ -1542,7 +1542,13 @@ function getDemand(p,trend){
 // takten styra, precis som förut.
 function getLongDemand(p,trend){
   const short=getDemand(p,trend);
-  const isNew = p.y1 <= p.m3*2;
+  // "Ny produkt" = fanns knappt före senaste kvartalet, alltså för lite
+  // historik för att årssiffran ska säga något. Mäts som takten under
+  // månad 4-12: (1år - 3mån) / 9. Tidigare användes 1år <= 3mån×2, men det
+  // mäter TILLVÄXTTAKT och inte ålder — en etablerad produkt med ett starkt
+  // kvartal slank igenom och fick en het månad att driva en halvårsorder.
+  const base9 = (p.y1 - p.m3) / 9;
+  const isNew = base9 < 1.5;
   if(isNew) return short;
   const a3=p.m3/3, a12=p.y1/12;
   const long=0.2*p.m1+0.4*a3+0.4*a12;
