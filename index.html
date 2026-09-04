@@ -231,6 +231,15 @@ tr.removed td{opacity:.35}
   </div>
 
   <div class="alert alert-info">ℹ️ Ladda alltid upp 12-månadersfilen först. Sedan kan du lägga till valfritt antal kortare vyer (3m, 1m, vecka). PO-registret sparas automatiskt och rensas från levererade orders vid nästa 12-månadersimport.</div>
+
+  <!-- Nollställning även här: gammal data och gammalt filter ligger kvar i
+       webbläsaren mellan körningar, och det märks först långt fram i flödet.
+       Att behöva klicka sig igenom sex steg för att nå knappen skapar fel. -->
+  <div id="reset-block-v0" style="margin-top:1rem;padding:12px 14px;background:#fcf7f0;border:1px solid #f0d9b8;border-radius:10px">
+    <div style="font-size:12px;color:#7a5a1a;margin-bottom:8px"><strong>Ligger gammal data kvar?</strong> Föregående körning, PO-register och filter sparas i webbläsaren. Har du uppdaterat verktyget eller är osäker på vad som ligger kvar — nollställ innan du importerar.</div>
+    <button class="btn" style="background:#B91C1C;color:#fff;border:none" onclick="resetEverything()">♻️ Nollställ allt &amp; börja om</button>
+    <span id="reset-hint-v0" style="font-size:12px;color:#7a5a1a;margin-left:10px"></span>
+  </div>
   <div id="v0-continue" style="display:none;margin-top:1rem">
     <button class="btn btn-primary" onclick="goTo(1)">PO-register →</button>
     <span style="font-size:12px;color:#888;margin-left:10px">Du kan också hoppa över 3-månadersfilen och fortsätta direkt</span>
@@ -335,7 +344,7 @@ tr.removed td{opacity:.35}
         <div id="t-cont" class="tooltip"><strong>Används inte längre</strong><br>Leveransdatum hämtas numera per inköpsorder ur PO-registret (steg 2). Fältet kan lämnas tomt.</div>
       </div>
       <div class="fi" style="position:relative" id="fw-postcont">
-        <label>Räkna in inkommande order som landar inom X dagar efter container <button class="help-btn" onclick="toggleTip('t-postcont')">?</button></label>
+        <label>Räkna in leverans som landar inom X dagar efter att ordern är säljbar <button class="help-btn" onclick="toggleTip('t-postcont')">?</button></label>
         <input type="number" id="s-postcont" value="0" min="0" max="60" onchange="saveCfg()">
         <div id="t-postcont" class="tooltip"><strong>Order strax efter horisonten</strong><br>Hur många dagar efter att den nya ordern landat en annan inkommande leverans ändå får räknas som befintligt lager.<div class="ex">Rekommenderat: 0. Högre värde räknar in varor som ännu inte kommit och gör förslaget för litet.</div></div>
       </div>
@@ -931,14 +940,18 @@ function renderSettingsUI(){
   const isVecka=isWeekly();
   const show=(id,on)=>{const el=document.getElementById(id);if(el)el.style.display=on?'':'none';};
   // Container-only blocks
-  show('mode-block',!isVecka);
-  show('date-calc-block',!isVecka);
-  show('fw-cont',!isVecka);
+  const useAir = S().useAirBridge!==false;   // Shalin Container flyger inte
+  show('mode-block',!isVecka && useAir);     // Båt/Endast flyg är meningslöst utan flyg
+  // Container-datum och datumräknaren styr ingenting längre — horisonten är
+  // ny-order-ledtiden och leveranstider kommer ur PO-registret.
+  show('date-calc-block',false);
+  show('fw-cont',false);
   show('fw-postcont',!isVecka);
   show('fw-newlead',!isVecka);       // ny-order-ledtid Genuine/3Card
   show('fw-newlead-oth',!isVecka);   // ny-order-ledtid Övriga
   show('fw-sea',!isVecka);
-  show('fw-air',!isVecka);   // "Flyg-ledtid Genuine/3Card" — irrelevant for Vecka
+  show('fw-air',!isVecka && useAir);   // flyg-ledtid bara där flyg används
+  show('fw-fly',isVecka || useAir);    // "Flyg-ledtid Shalin" = Ledtid Vecka i Vecka-läget
   show('fw-tup',!isVecka);
   show('fw-tdn',!isVecka);
   // Vecka-only block
@@ -2815,7 +2828,19 @@ function startNewCalc(){
   goTo(0);
 }
 
+// Visar i importsteget vad som ligger kvar sedan förra körningen.
+function updateResetHint(){
+  const el=document.getElementById('reset-hint-v0'); if(!el) return;
+  const bits=[];
+  if((products||[]).length>0) bits.push(`${products.length} produkter inlästa`);
+  if((proposals||[]).length>0) bits.push(`${proposals.length} rader från förra beräkningen`);
+  if((poList||[]).length>0) bits.push(`${poList.length} order i PO-registret`);
+  el.textContent = bits.length ? '⚠️ Ligger kvar: '+bits.join(' · ') : 'Inget ligger kvar — rent blad.';
+  el.style.color = bits.length ? '#B91C1C' : '#0F6E56';
+}
+
 function goTo(n){
+  if(n===0) updateResetHint();
   if(n===4){saveFilterState();renderConfirm();}
   if(n===5){
     setExpTab('test');
@@ -2834,6 +2859,14 @@ function goTo(n){
     // Phase-out export button only for Vecka
     const poBtn=document.getElementById('phaseout-btn');
     const hasPhaseOut=proposals.some((p,i)=>!removedRows.has(i)&&(p.otype==='phaseout'||p.phaseOut));
+    // Dölj flyg-filtren helt när leverantören inte flyger — annars står tre
+    // kryssrutor som aldrig påverkar något och skapar frågor.
+    const noAir = !isWeekly() && S().useAirBridge===false;
+    ['f-air-wrap','f-fly-wrap'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.style.display = noAir ? 'none' : '';
+    });
+    const batLbl=document.getElementById('f-bat-lbl');
+    if(batLbl) batLbl.textContent = noAir ? 'Container-order' : 'Båt';
     if(poBtn)poBtn.style.display=(isWeekly()||hasPhaseOut)?'':'none';
   }
   for(let i=0;i<6;i++){
@@ -2860,6 +2893,7 @@ function init(){
   {const defs=S().families, allFam=S().defaultAllFamilies===true;
    ['ff-gen','ff-3c','ff-oth'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.checked=allFam&&Array.isArray(defs)&&!!defs[i];});}
   updateImportGate(); // filimport låst tills leverantör AKTIVT valts denna session
+  updateResetHint();  // visa direkt vid start om gammal data ligger kvar
   applySharedArtcut();
   if(!loadFromStorage('inkop-seen')){startOnboard();saveToStorage('inkop-seen',true);}
 }
