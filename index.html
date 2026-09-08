@@ -1388,6 +1388,14 @@ function renderPOTable(){
 }
 
 // Live summary in step 2: which linked POs still lack a date.
+// Varning för order som passerat sitt säljbara datum.
+function staleWarningHtml(){
+  let stale=[]; try{ stale=getStalePOs(14); }catch(e){ return ''; }
+  if(!stale.length) return '';
+  const items=stale.map(s=>`#${s.po} (${s.qty} st, ${s.days} dgr försenad)`).join(', ');
+  return `<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#9A3412"><b>⏰ ${stale.length} order har passerat sitt säljbara datum:</b> ${items}. De räknas fortfarande som lager, vilket gör att produkterna aldrig föreslås för återbeställning. Uppdatera ETA om de är försenade — ta bort ordern om den är makulerad.</div>`;
+}
+
 function renderPOUndatedSummary(){
   const el=document.getElementById('po-undated-summary');
   if(!el)return;
@@ -1395,11 +1403,11 @@ function renderPOUndatedSummary(){
   if(!products||products.length===0){el.innerHTML='';return;}
   const bad=getUndatedLinkedPOs();
   if(bad.length===0){
-    el.innerHTML=`<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#166534">✓ Alla inkommande order kopplade till produkter har datum och kommer krediteras.</div>`;
+    el.innerHTML=`<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#166534">✓ Alla inkommande order kopplade till produkter har datum och kommer krediteras.</div>`+staleWarningHtml();
     return;
   }
   const items=bad.map(b=>`#${b.po} (${b.qty} st)`).join(', ');
-  el.innerHTML=`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#B91C1C"><b>⚠️ ${bad.length} order utan datum:</b> ${items} — fyll i ETA nedan, annars dubbelbeställs dessa produkter.</div>`;
+  el.innerHTML=`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#B91C1C"><b>⚠️ ${bad.length} order utan datum:</b> ${items} — fyll i ETA nedan, annars dubbelbeställs dessa produkter.</div>`+staleWarningHtml();
 }
 
 // ── Calculation ──────────────────────────────────────────────────
@@ -1743,6 +1751,29 @@ function renderFamilyFilter(){
 // Only counts POs linked to products in the SELECTED families, so
 // unrelated categories (reflexvästar, kryddställ…) don't trigger it.
 // Uses strict family selection: no family picked → no warning.
+// En inköpsorder som passerat sitt säljbara datum med god marginal är
+// antingen försenad eller död. Den räknas fortfarande som lager i alla
+// beräkningar, vilket TYST blockerar återbeställning: produkten ser täckt
+// ut och föreslås aldrig. Flaggas här så den granskas i stället.
+function getStalePOs(graceDays){
+  const grace = graceDays==null ? 14 : graceDays;
+  const linked={};
+  (products||[]).forEach(p=>(p.filePOs||[]).forEach(fp=>{
+    const k=normPN(fp.po); linked[k]=(linked[k]||0)+(fp.qty||0);
+  }));
+  const today=new Date(); today.setHours(0,0,0,0);
+  const out=[];
+  Object.keys(linked).forEach(k=>{
+    const po=(poList||[]).find(x=>normPN(x.po)===k);
+    if(!po||!po.eta||!isValidDate(po.eta))return;      // odaterade fångas separat
+    const sell=calcSellable(po.eta,po.inlev);
+    if(!isValidDate(sell))return;
+    const days=Math.round((today-new Date(sell))/864e5);
+    if(days>grace) out.push({po:k,qty:linked[k],days:days,sellable:sell});
+  });
+  return out.sort((a,b)=>b.days-a.days);
+}
+
 function getUndatedLinkedPOs(){
   const fam=selectedFamilies(true);
   const linked={}; // po -> total qty across in-scope products
@@ -1821,8 +1852,12 @@ function runCalc(){
     // surface as phase-out candidates. Needs an article cutoff set (s-artcut).
     const euArtCut=parseInt(gv('s-artcut'))||0;
     if(S().phaseOutMaxYear!=null && euArtCut>0 && p.artNr<euArtCut && p.y1<S().phaseOutMaxYear){
+      // Restnoteringsspärr: en utfasningsartikel som redan är SÅLD utan
+      // täckning måste ändå levereras — kunden har betalat. Köp exakt
+      // bristen, inget påslag, och behåll utfasningsflaggan.
       const dlPhase=calcDaysLeftStock(p.lager,daily);
-      proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',dlPhase,{phaseOut:true}));
+      const restPhase = p.lager<0 ? -p.lager : 0;
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,restPhase,'phaseout',dlPhase,{phaseOut:true}));
       continue;
     }
 
@@ -2049,7 +2084,9 @@ function runVeckaCalc(cfg,today){
     const isWeak = p.y1 < phaseMaxYear;
     const phaseOut = isOld && isWeak;
     if(phaseOut){
-      proposals.push(mkVeckaProp(p,trend,demandMonthly,0,'phaseout',daysLeft,{phaseOut:true}));
+      // Samma restnoteringsspärr som i EU- och containervägen.
+      const restPhase = onHand<0 ? -onHand : 0;
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,restPhase,'phaseout',daysLeft,{phaseOut:true}));
       continue;
     }
 
@@ -2066,7 +2103,8 @@ function runVeckaCalc(cfg,today){
     // Beräkna det normala behovet först — bryggan blir bara ett TAK på det.
     const normalNeed = (p.m3>=provenM3)
       ? Math.ceil(daily*provenCover)-onHand
-      : ((p.m1>=stepSmall && p.m1>=(p.m3/3)) ? stepBig : stepSmall);
+      : ((p.m1>=stepSmall && p.m1>=(p.m3/3)) ? stepBig : stepSmall)
+        + (onHand<0 ? -onHand : 0);   // bristen ska med även i bryggans tak
     if(nextDay!==null){
       const windowDays=nextDay-veckaDay;
       // Restlager när veckoordern landar. Måste simuleras dag för dag:
@@ -2114,6 +2152,10 @@ function runVeckaCalc(cfg,today){
       mode='step';
       // Don't buy if incoming already covers the gap
       if(incoming>=qty) qty=0;
+      // Restnoteringsspärr: steget är en fast klumpsumma (3 eller 5) och
+      // missar annars bristen helt — en produkt på -12 med väntande kunder
+      // skulle få 3 st. Lägg alltid den kvarstående bristen ovanpå.
+      if(onHand<0) qty += -onHand;
     }
     if(qty<=0)continue;
 
@@ -2215,7 +2257,15 @@ function getEuWarnings(p){
   const w=[];
   if(p.phaseOut && (p.uBat||0)>0) w.push(`Utfasning MEN redan såld utan täckning — köp exakt bristen (${p.uBat} st) så kundordern kan levereras. Sätt sedan Slutförsäljning: Ja.`);
   else if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
-  else if(p.veckaMode==='neg') w.push(`Negativt saldo (${p.lager}) — dropship sålt utan lager. Köp ${p.uBat} (täcker minus + buffert).`);
+  else if(p.veckaMode==='neg'){
+    // Två helt olika fall hamnade under samma text. När inkommande order
+    // redan täckt bristen är köpet en PÅFYLLNAD, inte en täckning av minus
+    // — den gamla texten stod bredvid "X st redan på väg" och såg ut som
+    // en dubbelbeställning.
+    const inkom=p.poBatTotal||0, tillg=(p.lager||0)+inkom;
+    if(tillg<0) w.push(`Negativt saldo (${p.lager}) — sålt utan lager och inget på väg täcker det. Köp ${p.uBat} (bristen ${-tillg} st + buffert).`);
+    else w.push(`Negativt saldo (${p.lager}) men ${inkom} st på väg täcker bristen. De ${p.uBat} st är påfyllnad till 30 dagars täckning — ingen dubbelbeställning.`);
+  }
   else if(p.veckaMode==='proven') w.push(`Bevisad säljare — 30 dagars täckning.`);
   else if(p.veckaMode==='active') w.push(`Säljer bra (${p.m1}/mån) — 30 dagars täckning.`);
   if(p.poBatTotal>0) w.push(`${p.poBatTotal} st redan på väg.`);
