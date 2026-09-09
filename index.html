@@ -712,7 +712,8 @@ const SUPPLIERS={
     classThresholds:{A:30,B:15,Cp:10,C:2},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     // ── EU dropship-trappa ──
-    negBuffer:3,               // negativt saldo → köp |saldo| + N buffert (−3 → 6)
+    negBuffer:3,               // negativt saldo → köp |saldo| + buffert, där
+                               // bufferten = min(detta, årstakt/mån)
     step2MinM1:2,              // sålt N+ senaste månaden → köp step2Qty
     step2Qty:3,                // …köp 3
     step2bMinM1:3,             // sålt MER än N senaste månaden (>3) → 14 dagars täckning
@@ -2217,7 +2218,15 @@ function runEuCalc(cfg,today){
       // after incoming is a meaningful quantity.
       if(onHand<0){
         // genuine remaining shortfall after incoming → cover it + buffer
-        qty=rndNearest((-onHand)+negBuffer);
+        // Bufferten skalas mot ÅRSTAKTEN, inte en fast konstant. En produkt
+        // som sålt 1 st på ett år behöver inte 3 enheters buffert — det blir
+        // tre års lager. Och eftersom brist 1 + buffert 3 = 4 hamnar exakt
+        // mitt emellan trappstegen 3 och 5, och avrundningen väljer det
+        // högre vid lika, fick VARJE långsamsäljare med en restnoterad
+        // enhet 5 st. Årstakten används för att en buffert handlar om
+        // långsiktig omsättning, inte om en enskild månad.
+        const buf=Math.min(negBuffer, Math.round((p.y1||0)/12));
+        qty=rndNearest((-onHand)+buf);
       } else {
         // incoming already cleared the minus; only top up if a real need
         const need = daily*coverDays - onHand;
@@ -2263,7 +2272,7 @@ function getEuWarnings(p){
     // — den gamla texten stod bredvid "X st redan på väg" och såg ut som
     // en dubbelbeställning.
     const inkom=p.poBatTotal||0, tillg=(p.lager||0)+inkom;
-    if(tillg<0) w.push(`Negativt saldo (${p.lager}) — sålt utan lager och inget på väg täcker det. Köp ${p.uBat} (bristen ${-tillg} st + buffert).`);
+    if(tillg<0) w.push(`Negativt saldo (${p.lager}) — sålt utan lager och inget på väg täcker det. Köp ${p.uBat} st (bristen ${-tillg} st + buffert efter årstakt).`);
     else w.push(`Negativt saldo (${p.lager}) men ${inkom} st på väg täcker bristen. De ${p.uBat} st är påfyllnad till 30 dagars täckning — ingen dubbelbeställning.`);
   }
   else if(p.veckaMode==='proven') w.push(`Bevisad säljare — 30 dagars täckning.`);
