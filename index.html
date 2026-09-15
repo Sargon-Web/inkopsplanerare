@@ -673,13 +673,20 @@ const SUPPLIERS={
     enabled:true,
     countIla:false,            // Til = säljbart
     modes:['vecka'],           // eget veckoläge (varken båt eller flyg-brygga)
-    leadDefaults:{sea:0,air:25,fly:25,cont:0}, // ~25 dagar order→säljbar
-    veckaLead:33,              // 14 (lev) + 7-10 (frakt) + 7-14 (inlev) till hylla              // ledtid tills en veckoorder är säljbar
+    leadDefaults:{sea:0,air:28,fly:28,cont:0}, // ~10 pack + 5-10 frakt + 7-14 inlev // ~25 dagar order→säljbar
+    veckaLead:28,              // dagar tills en veckoorder är SÄLJBAR hos oss.
+                               // Uppmätt spann 22-38 (pack 10-14 + frakt 5-10
+                               // + inleverans 7-14). 28 ligger strax över det
+                               // snabbaste utfallet och täcker normalläget.
     classThresholds:{A:30,B:15,Cp:10,C:2},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     // ── Vecka-specifika regler ──
     veckaContainerThreshold:25,// 25+/år hanteras av Container, ej Vecka
-    reorderDaysCover:30,       // köp när lagret räcker < N dagar framåt
+    // MÅSTE vara veckaLead + en beställningscykel (7 dgr), annars hinner
+    // nästa order inte fram och produkten står tom. Stod tidigare på 30 mot
+    // en ledtid på 33 — det gav korta lagerslut på ~en tredjedel av
+    // sortimentet varje körning. Ändrar du veckaLead: ändra även denna.
+    reorderDaysCover:35,       // köp när lagret räcker < N dagar framåt
     stepSmall:3,               // svag månad → köp 3
     stepBig:5,                 // stark månad (momentum) → köp 5
     provenM3:10,               // sålt N+ på 3 mån → "bevisad", ge längre täckning
@@ -692,7 +699,7 @@ const SUPPLIERS={
     uiText:{
       modeLabel:'Orderläge för Shalin Vecka',
       modeDesc:'Veckovis påfyllning. Köp när lagret räcker < 30 dagar. Nya produkter trappas upp 3→5; åldrande svagsäljare fasas ut.',
-      flyLabel:'Ledtid Vecka (dagar)',
+      flyLabel:'Ledtid Vecka — dagar tills varan är SÄLJBAR (pack + frakt + inleverans)',
       minYearLabel:'Container-tröskel (25+ hanteras av Container)',
       cards:[
         {t:'Ny / oprövad', r:'Litet första köp', d:'Svag mån: 3 st<br>Stark mån: 5 st'},
@@ -830,7 +837,8 @@ function renderBlueprint(){
     ['Köpmängd — svag månad','3 st (bas)'],
     ['Köpmängd — stark månad','5 st (kräver: sålt ≥3 senaste månaden OCH inte avtagande)'],
     ['Bevisad produkt','Sålt 10+ på 3 mån → 50 dagars täckning istället'],
-    ['Ledtid Vecka',bpVal(sv.fly,'33')+' dagar (14 hos leverantör + 7–10 frakt + 7–14 inleverans)'],
+    ['Ledtid Vecka',bpVal(sv.fly,'28')+' dagar tills varan är SÄLJBAR (pack + frakt + inleverans). Uppmätt spann 22–38; 28 ligger strax över snabbaste utfallet.'],
+    ['Beställningsgrind','35 dagar = ledtid + en veckocykel. MÅSTE följa ledtiden — annars hinner nästa order inte fram och produkten står tom. Ändras ledtiden ska grinden ändras lika mycket.'],
     ['Brygga mot kommande leverans','Finns en leverans som landar efter att veckoordern hunnit fram, kapas köpet vid vad glappet kräver — aldrig mer. Ingen behöver hålla reda på container-datum.'],
     ['Roll i helheten','Täcker glappet fram till containern för Shalin Container-produkter. Därför läggs ingen flyg-brygga där.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sv.artcut,'sätts per körning')],
@@ -959,8 +967,21 @@ function renderSettingsUI(){
   show('fw-vecka-artcut',isVecka || S().phaseOutMaxYear!=null);
   // "Ledtid Vecka" reuses the s-fly field; relabel and keep it visible
   if(isVecka){
-    setText('fly-label','Ledtid Vecka (dagar)');
-    const cardEl=document.getElementById('class-cards');
+    setText('fly-label','Ledtid Vecka — dagar tills varan är SÄLJBAR');
+    // Beställningsgrinden måste följa ledtiden. Visa kopplingen direkt under
+    // fältet, med varning om de glidit isär — annars upptäcks det aldrig.
+    const lead=parseInt(gv('s-fly'))||S().veckaLead||28;
+    const gate=S().reorderDaysCover;
+    const krav=lead+7;
+    const el=document.getElementById('fw-fly');
+    if(el){
+      let n=document.getElementById('lead-gate-note');
+      if(!n){ n=document.createElement('div'); n.id='lead-gate-note'; n.className='ex'; el.appendChild(n); }
+      const ok = gate>=krav-1;
+      n.innerHTML = ok
+        ? `Beställningsgrind: <b>${gate} dgr</b>. Stämmer med ledtid ${lead} + veckocykel 7.`
+        : `<span style="color:#B91C1C"><b>⚠️ Beställningsgrinden är ${gate} dgr men behöver vara minst ${krav}</b> (ledtid ${lead} + veckocykel 7). Produkter hinner ta slut innan nästa order kommer fram.</span>`;
+    }
   }
 
   const cardsEl=document.getElementById('class-cards');
@@ -2049,7 +2070,10 @@ function runVeckaCalc(cfg,today){
     const undatedQty=Math.max(0,incomingPO-datedQty);
 
     // Dag då en NY veckoorder lagd idag är säljbar hos oss.
-    const veckaDay=S_.veckaLead||25;
+    // Läs UI-fältet "Ledtid Vecka" först. Tidigare lästes bara konfigvärdet
+    // (S_.veckaLead) medan fältet s-fly bara syntes i exportrubriken — att
+    // ändra ledtiden i inställningarna påverkade alltså ingenting alls.
+    const veckaDay=parseInt(gv('s-fly'))||S_.veckaLead||25;
 
     // Dela leveranserna vid den dagen: allt som hinner fram innan dess är
     // lager när ordern landar; den första som kommer EFTER är den vi ska
