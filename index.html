@@ -974,7 +974,13 @@ function renderSettingsUI(){
     const gate=S().reorderDaysCover;
     const krav=lead+7;
     const el=document.getElementById('fw-fly');
-    if(el){
+    // Kopplingen gäller bara leverantörer som HAR en beställningsgrind
+    // (Shalin Vecka). EU saknar reorderDaysCover helt och styrs i stället av
+    // klassreglerna — där blev noteringen "undefined" och ett falsklarm.
+    if(el && gate==null){
+      const old=document.getElementById('lead-gate-note');
+      if(old) old.remove();
+    } else if(el){
       let n=document.getElementById('lead-gate-note');
       if(!n){ n=document.createElement('div'); n.id='lead-gate-note'; n.className='ex'; el.appendChild(n); }
       const ok = gate>=krav-1;
