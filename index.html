@@ -230,13 +230,13 @@ tr.removed td{opacity:.35}
     </div>
   </div>
 
-  <div class="alert alert-info">ℹ️ Ladda alltid upp 12-månadersfilen först. Sedan kan du lägga till valfritt antal kortare vyer (3m, 1m, vecka). PO-registret sparas automatiskt och rensas från levererade orders vid nästa 12-månadersimport.</div>
+  <div class="alert alert-info">ℹ️ Ladda alltid upp 12-månadersfilen först. Sedan kan du lägga till valfritt antal kortare vyer (3m, 1m, vecka). PO-registret sparas och sköter sig självt: när du går till steg 2 hämtas nya ordrar från filerna och inlevererade tas bort — bara för den leverantör du kör.</div>
 
   <!-- Nollställning även här: gammal data och gammalt filter ligger kvar i
        webbläsaren mellan körningar, och det märks först långt fram i flödet.
        Att behöva klicka sig igenom sex steg för att nå knappen skapar fel. -->
   <div id="reset-block-v0" style="margin-top:1rem;padding:12px 14px;background:#fcf7f0;border:1px solid #f0d9b8;border-radius:10px">
-    <div style="font-size:12px;color:#7a5a1a;margin-bottom:8px"><strong>Ligger gammal data kvar?</strong> Föregående körning, PO-register och filter sparas i webbläsaren. Har du uppdaterat verktyget eller är osäker på vad som ligger kvar — nollställ innan du importerar.</div>
+    <div style="font-size:12px;color:#7a5a1a;margin-bottom:8px"><strong>Ligger gammal data kvar?</strong> Föregående körning och filter sparas i webbläsaren. PO-registret ska däremot ligga kvar — där finns datumen du fyllt i. Nollställ bara om något verkar fel; då måste alla datum fyllas i igen.</div>
     <button class="btn" style="background:#B91C1C;color:#fff;border:none" onclick="resetEverything()">♻️ Nollställ allt &amp; börja om</button>
     <span id="reset-hint-v0" style="font-size:12px;color:#7a5a1a;margin-left:10px"></span>
   </div>
@@ -252,17 +252,16 @@ tr.removed td{opacity:.35}
     <div class="section-header">
       <div>
         <h3 style="font-size:14px;font-weight:500;position:relative">Aktiva inköpsorders <button class="help-btn" onclick="toggleTip('t-po')">?</button> <span class="saved-tag" id="po-saved-tag" style="display:none">● Sparat</span>
-          <div id="t-po" class="tooltip" style="font-weight:400"><strong>Vad gör jag här?</strong><br>Här ligger inköpsorder som redan är på väg till er. Systemet drar av dem så du inte dubbelbeställer. Fyll i <b>ETA</b> (när varan når ert lager) och <b>Dagar till hylla</b> (uppackning/inleverans) — då räknar systemet ut när den blir säljbar.<div class="ex">Har du inga order på väg? Då kan du hoppa vidare. Klicka "Auto-hämta från fil" för att fylla i order som fanns i din export.</div></div>
+          <div id="t-po" class="tooltip" style="font-weight:400"><strong>Vad gör jag här?</strong><br>Här ligger inköpsorder som redan är på väg till er. Systemet drar av dem så du inte dubbelbeställer. Fyll i <b>ETA</b> (när varan når ert lager) och <b>Dagar till hylla</b> (uppackning/inleverans) — då räknar systemet ut när den blir säljbar.<div class="ex">Ordrarna hämtas automatiskt från filerna och inlevererade tas bort. Du fyller bara i datum på nya ordrar — datumen sparas till nästa gång.</div></div>
         </h3>
-        <p style="font-size:12px;color:#888;margin-top:3px">Sparas automatiskt. Levererade orders rensas vid nästa filimport.</p>
+        <p style="font-size:12px;color:#888;margin-top:3px">Sparas automatiskt. Nya ordrar hämtas från filerna, inlevererade tas bort — nollställ inte registret.</p>
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn" onclick="toggleEl('po-help')">? Hjälp</button>
-        <button class="btn btn-primary" onclick="importPOsFromFile()">✨ Auto-hämta från fil</button>
       </div>
     </div>
     <div id="po-help" style="display:none" class="alert alert-info">
-      ℹ️ <div><strong>PO-registret</strong> — fyll i ETA och dagar till hylla. Systemet räknar ut "Säljbar från" automatiskt och krediterar PO:n mot beräkningarna från det datumet.<br><br>Klicka "Auto-hämta" för att hämta PO-nummer från den uppladdade filen. Bocka in flera och använd "Applicera på markerade" för att sätta samma datum på en gång.<br><br><strong>Tips:</strong> Välj alltid datum via kalendern för att undvika felformat.</div>
+      ℹ️ <div><strong>PO-registret</strong> — fyll i ETA och dagar till hylla. Systemet räknar ut "Säljbar från" automatiskt och krediterar PO:n mot beräkningarna från det datumet.<br><br>Ordrarna hämtas automatiskt från de inlästa filerna när du kommer hit, och ordrar som inte längre finns i filerna (inlevererade) tas bort. Varje leverantör sköter bara sina egna ordrar — en EU-körning rör inte Shalins datum. Bocka in flera och använd "Applicera på markerade" för att sätta samma datum på en gång.<br><br><strong>Vilka behöver datum?</strong> Cheng och Shalin Container: alla. Shalin Vecka: containerordrar (veckoordrar räknas rätt även utan). EU: inga.<br><br><strong>Tips:</strong> Välj alltid datum via kalendern för att undvika felformat.</div>
     </div>
     <div id="po-alert" class="alert" style="display:none">ℹ️ <span id="po-alert-text"></span></div>
     <div id="po-undated-summary"></div>
@@ -642,7 +641,7 @@ const SUPPLIERS={
     // Uppåt får 6: båtfrakt är mycket billigare än veckoköpets flyg, så om
     // tillväxten är äkta lönar det sig att ta den på båten. Nedåt får 4:
     // där gör varje överbliven enhet mest skada. Säkerheten mot underköp
-    // ligger i veckoköpet, som är på hyllan på ~33 dagar.
+    // ligger i veckoköpet, som är på hyllan på ~28 dagar.
     coverMonths:{A:{up:6,down:4,stable:5},B:{up:6,down:4,stable:5},Cp:{down:0,stable:0},C:0,D:0},
     demandWeights:{m1:0.5,m3:0.3,y1:0.2},
     safetyNet:{enabled:false},
@@ -657,7 +656,7 @@ const SUPPLIERS={
     phaseOutMinArt:0,
     uiText:{
       modeLabel:'Orderläge för Shalin Container',
-      modeDesc:'Container 4–5 ggr/år. Bara produkter som sålt 25+/år köps via container. Glappet fram till containern täcks av Shalin Vecka (~33 dgr till hylla mot flygets 52, samma fraktkostnad) — ingen flyg-brygga läggs här.',
+      modeDesc:'Container 4–5 ggr/år. Bara produkter som sålt 25+/år köps via container. Glappet fram till containern täcks av Shalin Vecka (~28 dgr till hylla mot flygets 52, samma fraktkostnad) — ingen flyg-brygga läggs här.',
       flyLabel:'Flyg-ledtid Shalin (dagar)',
       minYearLabel:'Minsta årsförsäljning för container',
       cards:[
@@ -698,13 +697,13 @@ const SUPPLIERS={
     defaultAllFamilies:true,   // Shalin beställs som helhet → förbocka alla familjer
     uiText:{
       modeLabel:'Orderläge för Shalin Vecka',
-      modeDesc:'Veckovis påfyllning. Köp när lagret räcker < 30 dagar. Nya produkter trappas upp 3→5; åldrande svagsäljare fasas ut.',
+      modeDesc:'Veckovis påfyllning. Köp när lagret räcker < 35 dagar (ledtid 28 + en veckocykel). Nya produkter trappas upp 3→5; åldrande svagsäljare fasas ut.',
       flyLabel:'Ledtid Vecka — dagar tills varan är SÄLJBAR (pack + frakt + inleverans)',
       minYearLabel:'Container-tröskel (25+ hanteras av Container)',
       cards:[
         {t:'Ny / oprövad', r:'Litet första köp', d:'Svag mån: 3 st<br>Stark mån: 5 st'},
         {t:'Bevisad', r:'10+ på 3 mån', d:'50 dagars täckning<br>trappas upp'},
-        {t:'Mot Container', r:'25+/år', d:'Lämnar Vecka<br>→ Container tar över'},
+        {t:'Mot Container', r:'25+/år', d:'Köps här tills container-<br>order är lagd — flaggas'},
         {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
       ]
     }
@@ -723,10 +722,10 @@ const SUPPLIERS={
                                // bufferten = min(detta, årstakt/mån)
     step2MinM1:2,              // sålt N+ senaste månaden → köp step2Qty
     step2Qty:3,                // …köp 3
-    step2bMinM1:3,             // sålt MER än N senaste månaden (>3) → 14 dagars täckning
-    step2bDaysCover:14,
+    step2bMinM1:3,             // sålt N+ senaste månaden (≥3) → 30 dagars täckning (provenDaysCover)
     provenM3:10,               // 10+ på 3 mån (eller 1 mån) → 30 dagars täckning
     provenDaysCover:30,
+    euOpenDays:21,             // order öppen så här länge (EU-ordrar kommer ~10 d) → flaggas
     phaseOutMaxYear:10,        // < N sålda/år → utfasningskandidat…
     phaseOutMinArt:0,          // …OM artikelnr < gräns (sätts i UI)
     families:[{id:'skydd',label:'Skydd'},{id:'ovrigt',label:'Tillbehör & Övrigt'}],
@@ -739,8 +738,8 @@ const SUPPLIERS={
       minYearLabel:'Container-tröskel (ej relevant för EU)',
       cards:[
         {t:'Dropship', r:'Til 0, säljer knappt', d:'Köps ej<br>väntar tills minus'},
-        {t:'Sålt / minus', r:'Negativt saldo el. 2+/mån', d:'Täck minus +3<br>el. köp 3'},
-        {t:'Bevisad', r:'>3/mån → 14 d · 10+/3m → 30 d', d:'Täckning hemma<br>trappas upp'},
+        {t:'Sålt / minus', r:'Negativt saldo el. 2+/mån', d:'Täck minus + buffert<br>el. köp 3'},
+        {t:'Bevisad', r:'Sålt 3+/mån → 30 dagar', d:'Täckning hemma<br>trappas upp'},
         {t:'Utfasning', r:'<10/år + gammal', d:'Köps ej<br>Slutförsäljning: Ja'}
       ]
     }
@@ -748,6 +747,31 @@ const SUPPLIERS={
 };
 let activeSup='cheng';
 let mergedFiles=[]; // names of extra export views merged into the 12m base
+// Sista artikelnummer per inläst fil. Kodmyran kapar långa exporter utan att
+// säga till (27 sep slutade 3-månadersfilen vid 244687 medan 1-månadsfilen
+// gick till 248552). Filerna är sorterade på artikelnummer, så en fil som
+// slutar långt under de andra har tappat sina nyaste produkter — och en
+// produkt som saknas i filerna beställs aldrig.
+let loadedFileEnds=[];
+function fileEnds(name,parsed){
+  let first=Infinity,last=-Infinity;
+  parsed.forEach(p=>{if(p.artNr<first)first=p.artNr;if(p.artNr>last)last=p.artNr;});
+  return {name,first,last};
+}
+function truncationWarningHtml(){
+  if(loadedFileEnds.length<2) return '';
+  const max=Math.max(...loadedFileEnds.map(f=>f.last));
+  const minFirst=Math.min(...loadedFileEnds.map(f=>f.first));
+  // En fil som börjar långt in i sortimentet (t.ex. "nyare artiklar") är en
+  // DELFIL som tar vid där en uppdelad eller avkapad fil slutar. Börjar en
+  // delfil där filen slutar är inget förlorat — då ingen varning för den.
+  // (Är delfilen själv avkapad flaggas den i sin tur.)
+  const covered=f=>loadedFileEnds.some(g=>g!==f && g.first-minFirst>=10000 && g.first<=f.last+500);
+  const cut=loadedFileEnds.filter(f=>max-f.last>=500 && !covered(f));
+  if(!cut.length) return '';
+  const lst=cut.map(f=>`<b>${f.name}</b> slutar vid artikel ${f.last}`).join('<br>');
+  return `<div class="alert alert-warn" style="margin-top:6px">⚠️ <b>En fil ser avkapad ut.</b><br>${lst}<br>…men andra filer går till artikel ${max}. Kodmyran kapar långa exporter — produkter däremellan kan saknas och beställs då aldrig. Exportera den filen i två delar (t.ex. äldre och nyare artiklar) och ladda in båda.</div>`;
+}
 function S(){return SUPPLIERS[activeSup]||SUPPLIERS.cheng;}
 // Vecka and EU share the same view logic (top-up flow, vecka/phaseout
 // order types, no container/boat/class columns). This helper flags both.
@@ -757,8 +781,8 @@ function isWeekly(){const m=S().modes;return m&&(m[0]==='vecka'||m[0]==='eu');}
 const OB=[
   {icon:'📦',title:'Välkommen till Inköpsplaneraren',text:'Systemet hjälper dig räkna ut rätt inköpsmängder baserat på försäljningsdata, lager och inkommande orders. Vi börjar med Cheng.',ex:'Välj leverantör uppe till höger. Fler leverantörer läggs till successivt.'},
   {icon:'📂',title:'1. Importera',text:'Ladda upp exportfil (.xlsx) från Kodmyran. Systemet läser automatiskt in lager, försäljning och befintliga PO-rader.',ex:'Exportera "Alla produkter från leverantören" med 1 års data.'},
-  {icon:'🗓️',title:'2. PO-register',text:'Fyll i ETA för aktiva orders. Systemet krediterar rätt PO mot rätt tidshorisont baserat på när godset faktiskt är säljbart.',ex:'PO 3014 · ETA 2026-07-01 · 14 dagar → Säljbar 2026-07-15'},
-  {icon:'⚙️',title:'3. Inställningar',text:'Välj orderläge: Båt + Flyg-brygga (standard) eller Endast flyg för nyheter och akut påfyllning. Kontrollera ledtider och container-datum.',ex:'Flyg-ledtid Genuine/3 Card = 52 dagar (korrekt, tidigare system hade 28).'},
+  {icon:'🗓️',title:'2. PO-register',text:'Ordrarna hämtas automatiskt från filerna och inlevererade tas bort. Du fyller bara i ETA på nya ordrar — registret sparas mellan körningar, så nollställ det inte.',ex:'PO 3014 · ETA 2026-07-01 · 14 dagar → Säljbar 2026-07-15. EU behöver inga datum.'},
+  {icon:'⚙️',title:'3. Inställningar',text:'Kontrollera ledtider och trösklar för leverantören. Värdena sparas per leverantör.',ex:'Frågetecknet (?) vid varje fält förklarar vad det gör.'},
   {icon:'🔍',title:'4. Granska',text:'"Dagar kvar" visar hur länge lagret räcker inkl. inkommande PO. Röd = under 14 dagar. Sortera för att prioritera akuta produkter.',ex:'Grön rad = i aktiv PO. Gul rad = varning. Bocka ur rader du inte vill beställa.'},
   {icon:'✅',title:'5. Bekräfta & exportera',text:'Välj testexport för att granska i Kodmyran utan PO-nr. Välj skarp order när du är klar — PO-nummer kan fyllas i efter import.',ex:'Exportfilen innehåller art.nr, antal, dagar kvar och enhetspris.'},
 ];
@@ -810,12 +834,13 @@ function renderBlueprint(){
     ['Order efter horisont',bpVal(ch.postcont,'0')+' dagar — rekommenderat 0.'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
+    ['PO-register','Alla ordrar behöver datum — beräkningen stoppar annars. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
   ];
 
   // ── Shalin Container ──
   const sc=cfgFor('shalin_cont');
   const contRows=[
-    ['Flöde','Container 4–5 ggr/år. INGEN flyg-brygga — glappet fram till containern täcks av Shalin Vecka (~33 dgr till hylla mot flygets 52, samma fraktkostnad, och kan stoppas om containern kommer tidigt).'],
+    ['Flöde','Container 4–5 ggr/år. INGEN flyg-brygga — glappet fram till containern täcks av Shalin Vecka (~28 dgr till hylla mot flygets 52, samma fraktkostnad, och kan stoppas om containern kommer tidigt).'],
     ['Vilka produkter','Endast 25+/år (justerbar tröskel). Resten → Shalin Vecka.'],
     ['Container-tröskel',bpVal(sc.miny,'25')+'/år'],
     ['Täckning','A och B: 6 mån (trend upp) · 5 mån (stabil) · 4 mån (trend ned). Täcker tiden till nästa container; marginalen mot underköp ligger i veckoköpet.'],
@@ -825,6 +850,7 @@ function renderBlueprint(){
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja. Ger en utfasningslista från samma data.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sc.artcut,'sätts per körning')],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
+    ['PO-register','Alla ordrar behöver datum — beräkningen stoppar annars. Delas med Shalin Vecka. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
     ['Produktfamiljer','Skydd (skal/fodral/skärmskydd) · Tillbehör & Övrigt'],
   ];
 
@@ -832,25 +858,26 @@ function renderBlueprint(){
   const sv=cfgFor('shalin_vecka');
   const veckaRows=[
     ['Flöde','Veckovis påfyllning (mål: 1 gång/vecka)'],
-    ['Vilka produkter','Allt under container-tröskeln. 25+/år → Container.'],
-    ['När köps en produkt','När lagret räcker < 30 dagar framåt'],
+    ['Vilka produkter','Allt under container-tröskeln. 25+/år köps också här så länge ingen containerorder som räcker är på väg — flaggas då "lägg på nästa container".'],
+    ['När köps en produkt','När lagret (inkl. det som hinner fram före en ny veckoorder) räcker < 35 dagar framåt — se beställningsgrinden. Gäller alla köp, även bryggan.'],
     ['Köpmängd — svag månad','3 st (bas)'],
     ['Köpmängd — stark månad','5 st (kräver: sålt ≥3 senaste månaden OCH inte avtagande)'],
     ['Bevisad produkt','Sålt 10+ på 3 mån → 50 dagars täckning istället'],
     ['Ledtid Vecka',bpVal(sv.fly,'28')+' dagar tills varan är SÄLJBAR (pack + frakt + inleverans). Uppmätt spann 22–38; 28 ligger strax över snabbaste utfallet.'],
     ['Beställningsgrind','35 dagar = ledtid + en veckocykel. MÅSTE följa ledtiden — annars hinner nästa order inte fram och produkten står tom. Ändras ledtiden ska grinden ändras lika mycket.'],
-    ['Brygga mot kommande leverans','Finns en leverans som landar efter att veckoordern hunnit fram, kapas köpet vid vad glappet kräver — aldrig mer. Ingen behöver hålla reda på container-datum.'],
+    ['Brygga mot kommande leverans','Finns en leverans som landar efter att veckoordern hunnit fram, kapas köpet vid vad glappet kräver — aldrig mer. Köps bara när lagret räcker < 35 dagar; annars väntar köpet till en senare vecka. Stegprodukter lyfts aldrig över sitt steg (3/5). Ingen behöver hålla reda på container-datum.'],
     ['Roll i helheten','Täcker glappet fram till containern för Shalin Container-produkter. Därför läggs ingen flyg-brygga där.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sv.artcut,'sätts per körning')],
     ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, flaggas Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
+    ['PO-register','Order utan datum räknas som att den landar inom ledtiden — rätt för veckoordrar. Containerordrar behöver datum. Delas med Shalin Container. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
   ];
 
   // ── EU ──
   const eu=cfgFor('eu');
   const euRows=[
     ['Flöde','Dropship som trappas upp till lagervara'],
-    ['Negativt saldo (Til < 0)','Sålt utan lager. Räknar in det som är på väg. Kvarstår minus → täck det + 3 buffert. Täcker påväg redan minuset → köp 0.'],
+    ['Negativt saldo (Til < 0)','Sålt utan lager. Räknar in det som är på väg. Kvarstår minus → täck det + buffert = årsförsäljning ÷ 12, avrundat, max 3 (säljer den knappt blir bufferten 0). Täcker påväg redan minuset → påfyllnad bara om 30-dagarsbehovet är minst 3 st.'],
     ['Til = 0, säljer knappt (<2/mån)','Köps ej — ren dropship tills den går minus'],
     ['Börjar sälja (2/mån)','Köp 3'],
     ['Säljer (3+/mån)','30 dagars täckning, golv 3'],
@@ -861,6 +888,7 @@ function renderBlueprint(){
     ['Utfasningsgräns (artikelnr)',bpVal(eu.artcut,'sätts per körning')],
     ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart, kan vara negativt). Ila räknas EJ.'],
+    ['PO-register','Datum används inte: allt som är på väg i filerna dras av (en ny order hinner ändå inte före). Order som varit öppen i 21+ dagar flaggas — EU-ordrar kommer inom ~10. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
   ];
 
   let html='';
@@ -875,6 +903,9 @@ function openBlueprint(){renderBlueprint();document.getElementById('blueprint-ov
 function closeBlueprint(){document.getElementById('blueprint-overlay').style.display='none';document.body.style.overflow='';}
 
 
+// Guiden: knappen "? Guide" och första besöket anropade startOnboard, som saknades
+// — knappen gjorde ingenting och första sidladdningen avbröts med ett JS-fel.
+function startOnboard(){obStep=0;renderOb();document.getElementById('onboard').style.display='flex';}
 function closeOnboard(){document.getElementById('onboard').style.display='none';}
 function obNext(){if(obStep<OB.length-1){obStep++;renderOb();}else closeOnboard();}
 function obPrev(){if(obStep>0){obStep--;renderOb();}}
@@ -1037,15 +1068,72 @@ function loadPOs(){const v=loadFromStorage('inkop-po-list');if(v)poList=v;}
 // Prune the PO register to only POs referenced by the current product set.
 // Removes orphaned POs (e.g. Cheng containers left over when switching to
 // Shalin data). Saves and refreshes the table.
-function prunePOList(){
-  const activePOs=new Set();
-  products.forEach(p=>(p.filePOs||[]).forEach(fp=>activePOs.add(normPN(fp.po))));
-  const before=poList.length;
-  poList=poList.filter(p=>activePOs.has(normPN(p.po)));
-  const removed=before-poList.length;
-  savePOs();
-  if(typeof renderPOTable==='function')renderPOTable();
-  return removed;
+// ── PO-registret: ett register, men varje leverantör sköter sina ordrar ──
+// Tidigare rensades ALLA ordrar som inte fanns i filen man just läste in —
+// redan när FÖRSTA filen lästes. En EU-körning raderade därför Shalins
+// containerdatum, och en order som bara fanns i fil 2 eller 3 tappade sitt
+// datum. En order utan datum räknas i Vecka som redan hemma → underköp.
+// Nu:
+//  • varje order märks med leverantörsgrupp (Shalin Vecka + Container = en)
+//  • rensning sker först när alla filer är inlästa (steg 2 / Beräkna) och
+//    bara för den leverantör vars filer är inlästa
+//  • nya ordrar i filerna läggs till automatiskt
+//  • en rensad order sparas i 60 dagar; dyker den upp igen återställs datumet
+function supGroup(k){ k=k||activeSup; return String(k).indexOf('shalin')===0 ? 'shalin' : k; }
+let productsSup=null;             // leverantören vars filer är inlästa
+let poArchive=[];                 // rensade ordrar, för återställning
+const PO_ARCHIVE_DAYS=60;
+function savePOArchive(){saveToStorage('inkop-po-archive',poArchive);}
+function loadPOArchive(){const v=loadFromStorage('inkop-po-archive');if(Array.isArray(v))poArchive=v;}
+function daysSinceISO(iso){
+  if(!iso||!isValidDate(iso))return 0;
+  const t=new Date(todayStr), d=new Date(iso);
+  return Math.round((t-d)/864e5);
+}
+function referencedPOs(){
+  const ref={};
+  (products||[]).forEach(p=>(p.filePOs||[]).forEach(fp=>{const n=normPN(fp.po);if(!ref[n])ref[n]=fp.po;}));
+  return ref;
+}
+// Visas i registret: den inlästa leverantörens ordrar + allt filerna pekar på.
+function isPOVisible(e){
+  const g=supGroup(productsSup||activeSup);
+  if(e.sup===g) return true;
+  return !!referencedPOs()[normPN(e.po)];
+}
+function syncPORegister(){
+  const res={added:0,removed:0,restored:0};
+  if(!products||products.length===0) return res;
+  const g=supGroup(productsSup||activeSup);
+  const ref=referencedPOs();
+  // 1. Rensa inlevererade: bara egna ordrar som inte längre finns i filerna.
+  //    Ordrar utan märkning (från före uppdateringen) räknas som egna.
+  poList=poList.filter(e=>{
+    if(ref[normPN(e.po)]) return true;
+    if(e.sup && e.sup!==g) return true;           // annan leverantörs order
+    poArchive=poArchive.filter(a=>normPN(a.po)!==normPN(e.po));
+    poArchive.push(Object.assign({},e,{sup:e.sup||g,removedOn:todayStr}));
+    res.removed++; return false;
+  });
+  // 2. Märk och datumstämpla det som finns.
+  poList.forEach(e=>{ if(ref[normPN(e.po)]){ if(!e.sup)e.sup=g; if(!e.seen)e.seen=todayStr; } });
+  // 3. Nya ordrar: återställ ur arkivet om den rensats nyligen, annars ny rad.
+  const have=new Set(poList.map(e=>normPN(e.po)));
+  Object.keys(ref).forEach(n=>{
+    if(have.has(n))return;
+    const ai=poArchive.findIndex(a=>normPN(a.po)===n);
+    if(ai>=0){
+      const a=Object.assign({},poArchive[ai]); delete a.removedOn;
+      poList.push(a); poArchive.splice(ai,1); res.restored++;
+    } else {
+      poList.push({po:ref[n],eta:'',inlev:14,sellable:'',sup:g,seen:todayStr}); res.added++;
+    }
+  });
+  // 4. Arkivet sparas bara en begränsad tid.
+  poArchive=poArchive.filter(a=>daysSinceISO(a.removedOn)<=PO_ARCHIVE_DAYS);
+  selected.clear();
+  savePOs(); savePOArchive();
+  return res;
 }
 function cfgKey(){return 'inkop-cfg-'+activeSup;}
 function saveCfg(){
@@ -1243,11 +1331,12 @@ function loadFile(file,mode){
       // First file — set as base
       products=parsed;
       mergedFiles=[]; // fresh base resets the merged-files tally
-      // Clean PO list — remove POs not referenced by this dataset
-      const cleaned=prunePOList();
-      console.log('savePOs called OK');
+      loadedFileEnds=parsed.length?[fileEnds(file.name,parsed)]:[];
+      productsSup=activeSup;
+      // PO-registret rensas INTE här — först när alla filer är inlästa
+      // (syncPORegister vid steg 2 / Beräkna). Annars tappar ordrar som bara
+      // finns i fil 2 eller 3 sina datum.
       let msg=`✅ ${file.name} inläst — ${products.length} produkter.`;
-      if(cleaned>0)msg+=` ${cleaned} levererad${cleaned>1?'e':''} PO rensad${cleaned>1?'e':''}.`;
       msg+=` Ladda nu upp 3-månadersfilen nedan, eller klicka "PO-register" för att fortsätta.`;
       console.log('About to update DOM');
       const fsEl=document.getElementById('file-status');
@@ -1286,9 +1375,7 @@ function loadFile(file,mode){
         }
       }
 
-      // Prune PO register to only POs still referenced by current products
-      // (keeps the register clean when switching suppliers / datasets)
-      prunePOList();
+      // (PO-registret synkas vid steg 2 / Beräkna, när alla filer är inne.)
 
       const statusEl=document.getElementById('merge-status');
       let msg=`✅ ${file.name} inläst.`;
@@ -1299,13 +1386,14 @@ function loadFile(file,mode){
 
       // Track this merged file and show running tally
       mergedFiles.push({name:file.name,added:addedProds});
+      if(parsed.length) loadedFileEnds.push(fileEnds(file.name,parsed));
       const listEl=document.getElementById('merge-files-list');
       if(listEl){
         const total=products.length;
         const rows=mergedFiles.map((f,i)=>`<div>📄 ${f.name}${f.added>0?` (+${f.added} nya)`:''}</div>`).join('');
         listEl.innerHTML=`<div style="margin-top:6px;padding:8px 10px;background:#f0fdf8;border-radius:8px">
           <b>Inlästa tilläggsfiler (${mergedFiles.length}):</b>${rows}
-          <div style="margin-top:4px;color:#0F6E56"><b>Totalt ${total} produkter</b> efter merge.</div></div>`;
+          <div style="margin-top:4px;color:#0F6E56"><b>Totalt ${total} produkter</b> efter merge.</div></div>${truncationWarningHtml()}`;
       }
 
       // Reset the file input so the SAME slot can be used again for more files
@@ -1342,13 +1430,16 @@ function calcSellable(eta,inlev){
 function normPN(s){return String(s||'').replace(/^#/,'').trim().toLowerCase();}
 
 // ── PO register ──────────────────────────────────────────────────
+// Körs automatiskt när steg 2 öppnas (och vid Beräkna). Visar vad som hänt.
 function importPOsFromFile(){
-  if(products.length===0){showPOAlert('Ladda upp en fil först (steg 1).','alert-warn');return;}
-  const found={};products.forEach(p=>p.filePOs.forEach(fp=>{const n=normPN(fp.po);if(!found[n])found[n]=fp.po;}));
-  const existing=new Set(poList.map(p=>normPN(p.po)));let added=0;
-  Object.entries(found).forEach(([n,orig])=>{if(!existing.has(n)){poList.push({po:orig,eta:'',inlev:14,sellable:''});added++;}});
-  savePOs();
-  showPOAlert(added>0?`${added} nya PO-nummer hittade. Fyll i ETA via kalendern.`:'Alla PO-nummer finns redan.','alert-info');
+  if(products.length===0){renderPOTable();return;}
+  const r=syncPORegister();
+  const parts=[];
+  if(r.added>0)parts.push(`${r.added} ny${r.added>1?'a':''} order hämtad${r.added>1?'e':''} från filerna — fyll i datum där det behövs`);
+  if(r.restored>0)parts.push(`${r.restored} återställd${r.restored>1?'a':''} med tidigare datum`);
+  if(r.removed>0)parts.push(`${r.removed} inlevererad${r.removed>1?'e':''} borttagen${r.removed>1?'a':''} (finns inte längre i filerna)`);
+  if(parts.length)showPOAlert(parts.join(' · ')+'.','alert-info');
+  else {const el=document.getElementById('po-alert'); if(el)el.style.display='none';}
   renderPOTable();
 }
 function showPOAlert(msg,cls='alert-info'){
@@ -1360,7 +1451,7 @@ function addPO(){
   const po=document.getElementById('new-po').value.trim(),eta=document.getElementById('new-eta').value,inlev=parseInt(document.getElementById('new-inlev').value)||14;
   if(!po){showPOAlert('Ange PO-nummer.','alert-err');return;}
   if(eta&&!isValidDate(eta)){showPOAlert('Ogiltigt datum — välj via kalendern.','alert-err');return;}
-  poList.push({po,eta,inlev,sellable:calcSellable(eta,inlev)});
+  poList.push({po,eta,inlev,sellable:calcSellable(eta,inlev),sup:supGroup(productsSup||activeSup),seen:todayStr});
   document.getElementById('new-po').value='';document.getElementById('new-eta').value='';
   savePOs();renderPOTable();
 }
@@ -1379,10 +1470,11 @@ function toggleSel(i,c){
   if(c)selected.add(i);else selected.delete(i);
   document.getElementById('sel-count').textContent=`${selected.size} markerade`;
   const r=document.getElementById('po-row-'+i);if(r)r.classList.toggle('sel-row',c);
-  document.getElementById('sel-all').checked=selected.size===poList.length&&poList.length>0;
+  const vis=poList.filter(isPOVisible).length;
+  document.getElementById('sel-all').checked=selected.size===vis&&vis>0;
 }
 function toggleSelAll(c){
-  selected.clear();if(c)poList.forEach((_,i)=>selected.add(i));
+  selected.clear();if(c)poList.forEach((e,i)=>{if(isPOVisible(e))selected.add(i);});
   document.getElementById('sel-count').textContent=`${selected.size} markerade`;
   renderPOTable();
 }
@@ -1397,11 +1489,13 @@ function applyBulk(){
 function renderPOTable(){
   document.getElementById('sel-count').textContent=`${selected.size} markerade`;
   const tb=document.getElementById('po-tbody');
-  if(poList.length===0){
-    tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:2rem;color:#888;font-size:12px">Inga PO:n ännu. Ladda upp fil och klicka "Auto-hämta", eller lägg till manuellt nedan.</td></tr>';
+  if(!poList.some(isPOVisible)){
+    tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:2rem;color:#888;font-size:12px">Inga inköpsorder på väg för den här leverantören. Ordrarna hämtas automatiskt från filerna i steg 1.</td></tr>';
+    renderPOUndatedSummary();
     return;
   }
   tb.innerHTML=poList.map((p,i)=>{
+    if(!isPOVisible(p))return '';
     const isSel=selected.has(i),etaOk=p.eta&&isValidDate(p.eta),etaCls=p.eta?(etaOk?'ok':'error'):'';
     return`<tr id="po-row-${i}" class="${isSel?'sel-row':''}">
       <td><input type="checkbox" ${isSel?'checked':''} onchange="toggleSel(${i},this.checked)"></td>
@@ -1429,13 +1523,25 @@ function renderPOUndatedSummary(){
   if(!el)return;
   // only meaningful once products are loaded
   if(!products||products.length===0){el.innerHTML='';return;}
+  const box=(bg,bd,fg,html)=>`<div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:${fg}">${html}</div>`;
+  // EU: datum används inte — allt som är på väg dras av.
+  if(activeSup==='eu'){
+    el.innerHTML=box('#EFF6FF','#BFDBFE','#1E3A8A',`ℹ️ <b>EU behöver inga datum.</b> Allt som är på väg i filerna dras av, eftersom en ny order ändå inte hinner före. Ordrar som legat öppna i ${S().euOpenDays||21}+ dagar flaggas här.`)+openTooLongHtml();
+    return;
+  }
   const bad=getUndatedLinkedPOs();
   if(bad.length===0){
-    el.innerHTML=`<div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#166534">✓ Alla inkommande order kopplade till produkter har datum och kommer krediteras.</div>`+staleWarningHtml();
+    el.innerHTML=box('#F0FDF4','#86EFAC','#166534','✓ Alla inkommande order kopplade till produkter har datum och kommer krediteras.')+staleWarningHtml();
+    return;
+  }
+  if(isWeekly()){
+    // Vecka: odaterade räknas som att de landar inom ledtiden — rätt för
+    // veckoordrar, så de ska inte se ut som ett fel.
+    el.innerHTML=box('#FFF7ED','#FDBA74','#7C2D12',`<b>${bad.length} order utan datum</b> räknas som att de landar inom ledtiden (${veckaLeadNow()} dagar). Det stämmer för veckoordrar — <b>containerordrar behöver datum</b>.<ul style="margin:6px 0 0 18px;padding:0">${undatedListHtml(bad)}</ul>`)+staleWarningHtml();
     return;
   }
   const items=bad.map(b=>`#${b.po} (${b.qty} st)`).join(', ');
-  el.innerHTML=`<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:12px;color:#B91C1C"><b>⚠️ ${bad.length} order utan datum:</b> ${items} — fyll i ETA nedan, annars dubbelbeställs dessa produkter.</div>`+staleWarningHtml();
+  el.innerHTML=box('#FEF2F2','#FCA5A5','#B91C1C',`<b>⚠️ ${bad.length} order utan datum:</b> ${items} — fyll i ETA nedan, annars dubbelbeställs dessa produkter.`)+staleWarningHtml();
 }
 
 // ── Calculation ──────────────────────────────────────────────────
@@ -1582,7 +1688,7 @@ function getDemand(p,trend){
 
 // Efterfrågan för LÅNGA bindningar (båtordern, 4-6 månaders täckning).
 // getDemand tar MAX(viktat, 1m, 3m) vid trend upp — bra för veckoköp som
-// rättar sig på 33 dagar, men farligt för en halvårsorder: en enda het
+// rättar sig på ~28 dagar, men farligt för en halvårsorder: en enda het
 // månad kan då driva hela kvantiteten. Här vägs de långa fönstren tyngre
 // och 3-månaderstakten är golv, så måttet aldrig hamnar under det som
 // faktiskt sålts i kvartalet.
@@ -1805,10 +1911,12 @@ function getStalePOs(graceDays){
 function getUndatedLinkedPOs(){
   const fam=selectedFamilies(true);
   const linked={}; // po -> total qty across in-scope products
+  const prods={};  // po -> antal produkter (för att känna igen en container)
   products.forEach(p=>{
     if(fam&&!fam[getFamily(p)])return; // skip products outside selected families
     (p.filePOs||[]).forEach(fp=>{
       linked[normPN(fp.po)]=(linked[normPN(fp.po)]||0)+fp.qty;
+      prods[normPN(fp.po)]=(prods[normPN(fp.po)]||0)+1;
     });
   });
   const bad=[];
@@ -1818,7 +1926,7 @@ function getUndatedLinkedPOs(){
     // sätts först av resyncPODates(), så varningen kunde annars påstå att
     // redan daterade ordrar saknade datum.
     const dated=!!(po&&po.eta&&isValidDate(po.eta));
-    if(!dated) bad.push({po:po?po.po:n, qty:linked[n], inRegister:!!po});
+    if(!dated) bad.push({po:po?po.po:n, qty:linked[n], prods:prods[n]||0, inRegister:!!po});
   });
   return bad.sort((a,b)=>b.qty-a.qty);
 }
@@ -1829,6 +1937,7 @@ function runCalc(){
   if((parseInt(gv('s-artcut'))||0)===0){
     if(!confirm('Utfasningsgränsen är 0 — INGEN utfasning sker och gamla svaga produkter kan få inköpsförslag.\n\nVill du verkligen beräkna utan utfasning?'))return;
   }
+  syncPORegister(); // nya ordrar in, inlevererade ut — om steg 2 hoppats över
   resyncPODates(); // ← räkna om sparade ETA:n INNAN vi validerar och beräknar
   // Enda kontrollen som behövs: en PO utan giltig ETA kan inte tidsättas och
   // krediteras därför inte alls i simuleringen → produkten dubbelbeställs.
@@ -1969,7 +2078,7 @@ function runCalc(){
       const runsDry=sim.stockoutDay!=null&&sim.stockoutDay>=0; // hits zero before container
       const passesGates=sim.airGap>=airThreshold && sim.airGap>=airUnitFloor;
       // useAirBridge=false: leverantören har en snabbare egen kanal (Shalin
-      // Vecka, ~33 dgr till hylla mot flygets 52) till samma fraktkostnad.
+      // Vecka, ~28 dgr till hylla mot flygets 52) till samma fraktkostnad.
       // Flygbryggan är då strikt sämre: långsammare, lika dyr, och kan inte
       // stoppas om containern kommer tidigt. Glappet täcks av veckoköpet.
       // Cheng saknar veckokanal och behåller bryggan.
@@ -2056,10 +2165,9 @@ function runVeckaCalc(cfg,today){
     // Skip totally dead rows with no data AND no stock (nothing to decide)
     if(p.y1===0&&p.m3===0&&p.m1===0&&p.lager===0)continue;
 
-    // Container-qualified (25+/år) lämnar Vecka BARA om en båtorder faktiskt
-    // är på väg (inköpsorder i filen). En 25+-produkt UTAN något på väg får
-    // inte falla mellan stolarna: den ligger kvar i veckoköpet tills
-    // containerordern är lagd, och flaggas nedan så den beställs på Container.
+    // 25+/år-produkter behandlas som alla andra i veckoköpet: grinden och
+    // bryggan avgör. Räcker det som är på väg köps inget; räcker det inte
+    // köps det som behövs och produkten flaggas för nästa container.
     const incomingPO=(p.filePOs||[]).reduce((s,fp)=>s+(fp.qty||0),0);
 
     // ── PO-REGISTRET: leveranstidslinje istället för rå summa ──────────
@@ -2090,10 +2198,14 @@ function runVeckaCalc(cfg,today){
       else if(nextDay===null) nextDay=d.day;
     });
 
-    // Container-grind: en 25+/år-produkt lämnar Vecka bara när allt som är
-    // på väg hinner fram FÖRE en ny veckoorder skulle hunnit. Ligger nästa
-    // leverans längre bort tar bryggan nedan över beslutet.
-    if(p.y1>=contThr && incomingPO>0 && nextDay===null)continue;
+    // Tidigare hoppades en 25+/år-produkt över HELT så fort något var på väg
+    // som landade inom ledtiden — koden antog att det var en container. Var
+    // det bara förra veckans lilla veckoorder spärrades produkten tills den
+    // ordern var inlevererad, och kunde hinna ta slut (t.ex. 235295: köper
+    // 25 st i dag, spärras dag 21 när den behöver fyllas på, tom dag 53–56).
+    // Spärren behövs inte: räcker det som är på väg stoppar grinden nedan.
+    // Flaggas "hör hemma på Container" — utom i bryggan, där en senare
+    // leverans (typiskt containern) redan är på väg.
     const contQualified = p.y1>=contThr;
 
     const a3=p.m3/3;
@@ -2121,6 +2233,14 @@ function runVeckaCalc(cfg,today){
       continue;
     }
 
+    // ── Beställningsgrind — gäller ALLA vägar, även bryggan ────────────
+    // Räcker lagret (inkl. det som hinner fram före en ny veckoorder) minst
+    // ledtid + en veckocykel, hinner nästa veckas order fram i tid — då
+    // väntar vi. Grinden låg tidigare EFTER bryggan, så varje produkt med en
+    // container längre fram köpte sitt steg varje vecka oavsett lager, även
+    // med 60–80 dagars täckning (17 rader / 90 st i utkastet 27 sep).
+    if(daysLeft>=reorderCover) continue;
+
     // ── BRYGGA fram till nästa leverans ───────────────────────────────
     // Finns en leverans som landar EFTER att en ny veckoorder hunnit bli
     // säljbar, ska veckoköpet bara täcka glappet däremellan — inte fylla
@@ -2129,8 +2249,8 @@ function runVeckaCalc(cfg,today){
     //   fönster        = dagar mellan att veckoordern blir säljbar och att
     //                    nästa leverans blir säljbar
     //   restlager      = det som fortfarande står kvar när veckoordern landar
-    //   VECKA_KEEP     = hur stor del av restlagret vi vågar räkna med
-    //                    (0.8 = 20 % marginal om försäljningen går fortare)
+    //   VECKA_KEEP     = hur stor del av restlagret vi räknar med
+    //                    (1.0 = hela; 0.8 staplades vecka för vecka)
     // Beräkna det normala behovet först — bryggan blir bara ett TAK på det.
     const normalNeed = (p.m3>=provenM3)
       ? Math.ceil(daily*provenCover)-onHand
@@ -2156,14 +2276,19 @@ function runVeckaCalc(cfg,today){
       // Ingen behöver då resonera om containerdatum: verktyget kapar själv.
       const bridgeCap=daily*windowDays-stockAtVecka*VECKA_BRIDGE_KEEP;
       const bridgeNeed=Math.min(normalNeed,bridgeCap);
-      const bq=bridgeNeed>0?rnd5(Math.round(bridgeNeed)):0;
+      // Avrundning: bevisade produkter på trappan 5/10/15…, stegprodukter
+      // behåller sitt steg. rnd5 lyfte tidigare steget 3 till 5 så fort en
+      // container låg på väg — svagsäljare fick alltså mer än utan container.
+      const br=bridgeNeed>0?Math.round(bridgeNeed):0;
+      const bq = br<=0 ? 0
+        : (p.m3>=provenM3) ? rnd5(br)
+        : Math.max(stepSmall, br);
       if(bq<=0)continue;
-      proposals.push(mkVeckaProp(p,trend,demandMonthly,bq,'bridge',daysLeft,{contQualified,bridgeWindow:windowDays,bridgeDay:nextDay}));
+      proposals.push(mkVeckaProp(p,trend,demandMonthly,bq,'bridge',daysLeft,{contQualified:false,bridgeWindow:windowDays,bridgeDay:nextDay}));
       continue;
     }
 
-    // ── Reorder gate: only buy if stock covers < reorderCover days ──
-    if(daysLeft>=reorderCover) continue;
+    // (Beställningsgrinden ligger ovanför bryggan och gäller redan här.)
 
     // ── Proven product (10+ sold in 3 months) → 50-day coverage ──
     let qty=0, mode='vecka';
@@ -2308,6 +2433,10 @@ function getEuWarnings(p){
   else if(p.veckaMode==='proven') w.push(`Bevisad säljare — 30 dagars täckning.`);
   else if(p.veckaMode==='active') w.push(`Säljer bra (${p.m1}/mån) — 30 dagars täckning.`);
   if(p.poBatTotal>0) w.push(`${p.poBatTotal} st redan på väg.`);
+  try{
+    const old=getOpenTooLongPOs().filter(o=>(p.filePOs||[]).some(fp=>normPN(fp.po)===normPN(o.po)));
+    old.forEach(o=>w.push(`Order #${o.po} har varit öppen i ${o.days} dagar — räknas som på väg tills den stängs i Kodmyran.`));
+  }catch(e){}
   return w;
 }
 
@@ -2332,7 +2461,7 @@ function mkVeckaProp(p,trend,demandMonthly,qty,mode,daysLeft,extra){
 
 function getVeckaWarnings(p){
   const w=[];
-  if(p.contQualified) w.push(`25+/år utan båtorder — hör hemma på Shalin Container. Veckoköpet täcker bara tills containerordern är lagd — lägg den på nästa container.`);
+  if(p.contQualified) w.push(`25+/år — hör hemma på Shalin Container. Ingen containerorder som räcker är på väg; veckoköpet täcker tills den är lagd. Lägg den på nästa container.`);
   if(p.phaseOut) w.push(`Utfasning: <10 sålda/år och äldre artikel. Sätt Slutförsäljning: Ja.`);
   else if(p.veckaMode==='bridge') w.push(`Brygga: nästa leverans är säljbar om ${p.bridgeDay} dagar. Köper bara glappet på ${p.bridgeWindow} dagar — inte full täckning, så du slipper överlager när den landar.`);
   else if(p.veckaMode==='proven') w.push(`Bevisad (10+ på 3 mån) — 50 dagars täckning.`);
@@ -2345,8 +2474,29 @@ function getVeckaWarnings(p){
 function renderPODateWarning(){
   const el=document.getElementById('po-date-warning');
   if(!el)return;
+  // EU använder inte datumen — varna i stället för ordrar som legat öppna.
+  if(activeSup==='eu'){ el.innerHTML=openTooLongHtml(); return; }
   const bad=getUndatedLinkedPOs();
   if(bad.length===0){el.innerHTML='';return;}
+  if(isWeekly()){
+    // Vecka: en order utan datum räknas som att den landar inom ledtiden
+    // (samma som redan hemma). Rätt för veckoordrar — fel för en container,
+    // som då ser ut att täcka glappet och gör att inget köps.
+    el.innerHTML=`
+    <div style="background:#FFF7ED;border:2px solid #FDBA74;border-radius:12px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-weight:700;color:#9A3412;font-size:14px;margin-bottom:6px">
+        ⚠️ ${bad.length} order utan datum räknas som att de landar inom ledtiden (${veckaLeadNow()} dagar)
+      </div>
+      <div style="font-size:12px;color:#7C2D12;margin-bottom:8px">
+        Det stämmer för veckoordrar. <b>Är någon en containerorder</b> — sätt datum i steg 2 och beräkna om, annars räknas hela containern som lager redan nu och inget köps för glappet fram till den.
+      </div>
+      <ul style="margin:0 0 10px 18px;padding:0;font-size:12px;color:#7C2D12">${undatedListHtml(bad)}</ul>
+      <button class="btn btn-sm" style="background:#C2410C;color:#fff" onclick="goTo(1)">← Till PO-registret (steg 2)</button>
+    </div>`;
+    return;
+  }
+  // Cheng / Shalin Container: beräkningen stoppar innan hit, men om det ändå
+  // finns odaterade gäller detta: de tidsätts inte och krediteras inte.
   const rows=bad.map(b=>{
     const tag=b.inRegister?'saknar ETA':'saknas i PO-registret';
     return `<li style="margin:2px 0"><b>#${b.po}</b> — ${b.qty} st på väg, <span style="color:#B91C1C">${tag}</span></li>`;
@@ -2363,6 +2513,56 @@ function renderPODateWarning(){
       <ul style="margin:0 0 10px 18px;padding:0;font-size:12px;color:#7F1D1D">${rows}</ul>
       <button class="btn btn-sm" style="background:#B91C1C;color:#fff" onclick="goTo(1)">← Till PO-registret (steg 2)</button>
     </div>`;
+}
+
+function veckaLeadNow(){ return parseInt(gv('s-fly'))||S().veckaLead||28; }
+// En containerorder har många stycken per produkt; en veckoorder 3–5.
+// Används bara som ledtråd i listan — beräkningen påverkas inte.
+// (Minst 50 st totalt, så en liten enstaka order inte pekas ut.)
+function undatedListHtml(bad){
+  return bad.map(b=>{
+    const avg=b.prods>0?b.qty/b.prods:0;
+    const hint=(avg>=10&&b.qty>=50)?' — <b>ser ut som en containerorder</b>':'';
+    const reg=b.inRegister?'':' (saknas i registret)';
+    return `<li style="margin:2px 0"><b>#${b.po}</b> — ${b.qty} st på ${b.prods} produkt${b.prods===1?'':'er'}${reg}${hint}</li>`;
+  }).join('');
+}
+
+// ── EU: ordrar som legat öppna för länge ─────────────────────────
+// EU drar av allt som är på väg, utan datum. En order som aldrig kommer
+// (leverantören slut, makulerad men inte stängd) räknas då som på väg för
+// alltid och produkten föreslås aldrig igen. Appen noterar första dagen den
+// såg varje ordernummer; EU-ordrar kommer inom ~10 dagar, så en order som
+// fortfarande är öppen efter euOpenDays flaggas.
+function getOpenTooLongPOs(){
+  const lim=S().euOpenDays||21;
+  const ref={};
+  (products||[]).forEach(p=>(p.filePOs||[]).forEach(fp=>{
+    const n=normPN(fp.po);
+    if(!ref[n])ref[n]={po:fp.po,qty:0,arts:[]};
+    ref[n].qty+=fp.qty||0; ref[n].arts.push(p.artNr);
+  }));
+  const out=[];
+  Object.keys(ref).forEach(n=>{
+    const e=poList.find(x=>normPN(x.po)===n);
+    if(!e||!e.seen)return;
+    const d=daysSinceISO(e.seen);
+    if(d>=lim) out.push({po:ref[n].po,qty:ref[n].qty,days:d,arts:ref[n].arts});
+  });
+  return out.sort((a,b)=>b.days-a.days);
+}
+function openTooLongHtml(){
+  let list=[]; try{ list=getOpenTooLongPOs(); }catch(e){ return ''; }
+  if(!list.length) return '';
+  const lim=S().euOpenDays||21;
+  const items=list.map(o=>{
+    const arts=o.arts.slice(0,6).join(', ')+(o.arts.length>6?` +${o.arts.length-6} till`:'');
+    return `<li style="margin:2px 0"><b>#${o.po}</b> — öppen i ${o.days} dagar, ${o.qty} st. Produkt: ${arts}</li>`;
+  }).join('');
+  return `<div style="background:#FFF7ED;border:2px solid #FDBA74;border-radius:12px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:#7C2D12">
+    <div style="font-weight:700;color:#9A3412;font-size:14px;margin-bottom:6px">⏰ ${list.length} EU-order har varit öppen i ${lim}+ dagar</div>
+    EU-ordrar kommer normalt inom ~10 dagar. Så länge ordern står öppen i Kodmyran räknas produkterna som täckta och föreslås inte för ny beställning. Kontrollera med leverantören — kommer den inte, stäng den i Kodmyran.
+    <ul style="margin:6px 0 0 18px;padding:0">${items}</ul></div>`;
 }
 
 
@@ -2923,13 +3123,16 @@ function updateResetHint(){
   const bits=[];
   if((products||[]).length>0) bits.push(`${products.length} produkter inlästa`);
   if((proposals||[]).length>0) bits.push(`${proposals.length} rader från förra beräkningen`);
-  if((poList||[]).length>0) bits.push(`${poList.length} order i PO-registret`);
-  el.textContent = bits.length ? '⚠️ Ligger kvar: '+bits.join(' · ') : 'Inget ligger kvar — rent blad.';
+  // PO-registret ska ligga kvar mellan körningar (datum följer med, nya och
+  // inlevererade ordrar sköts automatiskt) — det är ingen varning.
+  const poTxt=(poList||[]).length>0 ? ` PO-registret: ${poList.length} order sparade (ska ligga kvar).` : '';
+  el.textContent = (bits.length ? '⚠️ Ligger kvar: '+bits.join(' · ')+'.' : 'Ingen gammal körning ligger kvar.') + poTxt;
   el.style.color = bits.length ? '#B91C1C' : '#0F6E56';
 }
 
 function goTo(n){
   if(n===0) updateResetHint();
+  if(n===1) importPOsFromFile(); // hämta nya, rensa inlevererade, visa registret
   if(n===4){saveFilterState();renderConfirm();}
   if(n===5){
     setExpTab('test');
@@ -2977,7 +3180,7 @@ function init(){
       b.classList.toggle('active',b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+savedSup+"'"));
     });
   }
-  loadPOs();loadCfg();renderPOTable();calcContDate();renderSettingsUI();
+  loadPOs();loadPOArchive();loadCfg();renderPOTable();calcContDate();renderSettingsUI();
   // Pre-check families for suppliers ordered as a whole (Shalin)
   {const defs=S().families, allFam=S().defaultAllFamilies===true;
    ['ff-gen','ff-3c','ff-oth'].forEach((id,i)=>{const el=document.getElementById(id);if(el)el.checked=allFam&&Array.isArray(defs)&&!!defs[i];});}
