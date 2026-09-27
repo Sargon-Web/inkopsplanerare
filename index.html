@@ -649,6 +649,7 @@ const SUPPLIERS={
     // får en container-order. Allt därunder hanteras av Shalin Vecka.
     minYearForContainer:25,     // justerbar (kan sänkas till t.ex. 20)
     useAirBridge:false,         // glappet täcks av Shalin Vecka, se runCalc
+    skipNoLevArt:true,         // tom Lev.art.nr = Shalin är inte huvudleverantör → köps inte här
     airBridgeMinMonths:1,
     airBridgeMinUnits:5,
     minYearForBat:25,
@@ -672,6 +673,7 @@ const SUPPLIERS={
     enabled:true,
     countIla:false,            // Til = säljbart
     modes:['vecka'],           // eget veckoläge (varken båt eller flyg-brygga)
+    skipNoLevArt:true,         // tom Lev.art.nr = Shalin är inte huvudleverantör → köps inte här
     leadDefaults:{sea:0,air:28,fly:28,cont:0}, // ~10 pack + 5-10 frakt + 7-14 inlev // ~25 dagar order→säljbar
     veckaLead:28,              // dagar tills en veckoorder är SÄLJBAR hos oss.
                                // Uppmätt spann 22-38 (pack 10-14 + frakt 5-10
@@ -850,6 +852,7 @@ function renderBlueprint(){
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja. Ger en utfasningslista från samma data.'],
     ['Utfasningsgräns (artikelnr)',bpVal(sc.artcut,'sätts per körning')],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
+    ['Tom Lev.art.nr','Shalin är inte huvudleverantör → köps inte här. Produktens inköpsorder hör till en annan leverantör och visas inte i PO-registret. Listas i Granska.'],
     ['PO-register','Alla ordrar behöver datum — beräkningen stoppar annars. Delas med Shalin Vecka. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
     ['Produktfamiljer','Skydd (skal/fodral/skärmskydd) · Tillbehör & Övrigt'],
   ];
@@ -870,6 +873,7 @@ function renderBlueprint(){
     ['Utfasningsgräns (artikelnr)',bpVal(sv.artcut,'sätts per körning')],
     ['Utfasning','Artikel äldre än gränsen OCH sålt < 10/år → köps ej, flaggas Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
+    ['Tom Lev.art.nr','Shalin är inte huvudleverantör → köps inte här. Produktens inköpsorder hör till en annan leverantör och visas inte i PO-registret. Listas i Granska.'],
     ['PO-register','Order utan datum räknas som att den landar inom ledtiden — rätt för veckoordrar. Containerordrar behöver datum. Delas med Shalin Container. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
   ];
 
@@ -1080,6 +1084,15 @@ function loadPOs(){const v=loadFromStorage('inkop-po-list');if(v)poList=v;}
 //  • nya ordrar i filerna läggs till automatiskt
 //  • en rensad order sparas i 60 dagar; dyker den upp igen återställs datumet
 function supGroup(k){ k=k||activeSup; return String(k).indexOf('shalin')===0 ? 'shalin' : k; }
+// Tom Lev.art.nr = leverantören är inte produktens huvudleverantör; produkten
+// är bara kopplad hit i Kodmyran. För Shalin (skipNoLevArt) köps sådana
+// produkter inte, och deras inköpsorder hör till en annan leverantör — de
+// ska varken synas i registret eller kräva datum.
+let skippedNoLev=[];
+function isForeignProduct(p,cfg){
+  cfg=cfg||SUPPLIERS[productsSup||activeSup]||S();
+  return !!cfg.skipNoLevArt && !String(p.levArt||'').trim();
+}
 let productsSup=null;             // leverantören vars filer är inlästa
 let poArchive=[];                 // rensade ordrar, för återställning
 const PO_ARCHIVE_DAYS=60;
@@ -1090,9 +1103,12 @@ function daysSinceISO(iso){
   const t=new Date(todayStr), d=new Date(iso);
   return Math.round((t-d)/864e5);
 }
-function referencedPOs(){
+function referencedPOs(all){
   const ref={};
-  (products||[]).forEach(p=>(p.filePOs||[]).forEach(fp=>{const n=normPN(fp.po);if(!ref[n])ref[n]=fp.po;}));
+  (products||[]).forEach(p=>{
+    if(!all && isForeignProduct(p)) return;   // annan huvudleverantörs order
+    (p.filePOs||[]).forEach(fp=>{const n=normPN(fp.po);if(!ref[n])ref[n]=fp.po;});
+  });
   return ref;
 }
 // Visas i registret: den inlästa leverantörens ordrar + allt filerna pekar på.
@@ -1102,10 +1118,10 @@ function isPOVisible(e){
   return !!referencedPOs()[normPN(e.po)];
 }
 function syncPORegister(){
-  const res={added:0,removed:0,restored:0};
+  const res={added:0,removed:0,restored:0,other:0};
   if(!products||products.length===0) return res;
   const g=supGroup(productsSup||activeSup);
-  const ref=referencedPOs();
+  const ref=referencedPOs(), refAll=referencedPOs(true);
   // 1. Rensa inlevererade: bara egna ordrar som inte längre finns i filerna.
   //    Ordrar utan märkning (från före uppdateringen) räknas som egna.
   poList=poList.filter(e=>{
@@ -1113,7 +1129,8 @@ function syncPORegister(){
     if(e.sup && e.sup!==g) return true;           // annan leverantörs order
     poArchive=poArchive.filter(a=>normPN(a.po)!==normPN(e.po));
     poArchive.push(Object.assign({},e,{sup:e.sup||g,removedOn:todayStr}));
-    res.removed++; return false;
+    if(refAll[normPN(e.po)]) res.other++; else res.removed++;   // annan leverantörs order ≠ inlevererad
+    return false;
   });
   // 2. Märk och datumstämpla det som finns.
   poList.forEach(e=>{ if(ref[normPN(e.po)]){ if(!e.sup)e.sup=g; if(!e.seen)e.seen=todayStr; } });
@@ -1438,6 +1455,7 @@ function importPOsFromFile(){
   if(r.added>0)parts.push(`${r.added} ny${r.added>1?'a':''} order hämtad${r.added>1?'e':''} från filerna — fyll i datum där det behövs`);
   if(r.restored>0)parts.push(`${r.restored} återställd${r.restored>1?'a':''} med tidigare datum`);
   if(r.removed>0)parts.push(`${r.removed} inlevererad${r.removed>1?'e':''} borttagen${r.removed>1?'a':''} (finns inte längre i filerna)`);
+  if(r.other>0)parts.push(`${r.other} order tillhör en annan huvudleverantör och visas inte här`);
   if(parts.length)showPOAlert(parts.join(' · ')+'.','alert-info');
   else {const el=document.getElementById('po-alert'); if(el)el.style.display='none';}
   renderPOTable();
@@ -1892,9 +1910,9 @@ function renderFamilyFilter(){
 function getStalePOs(graceDays){
   const grace = graceDays==null ? 14 : graceDays;
   const linked={};
-  (products||[]).forEach(p=>(p.filePOs||[]).forEach(fp=>{
+  (products||[]).forEach(p=>{ if(isForeignProduct(p))return; (p.filePOs||[]).forEach(fp=>{
     const k=normPN(fp.po); linked[k]=(linked[k]||0)+(fp.qty||0);
-  }));
+  }); });
   const today=new Date(); today.setHours(0,0,0,0);
   const out=[];
   Object.keys(linked).forEach(k=>{
@@ -1914,6 +1932,7 @@ function getUndatedLinkedPOs(){
   const prods={};  // po -> antal produkter (för att känna igen en container)
   products.forEach(p=>{
     if(fam&&!fam[getFamily(p)])return; // skip products outside selected families
+    if(isForeignProduct(p))return;     // annan huvudleverantör — köps inte här
     (p.filePOs||[]).forEach(fp=>{
       linked[normPN(fp.po)]=(linked[normPN(fp.po)]||0)+fp.qty;
       prods[normPN(fp.po)]=(prods[normPN(fp.po)]||0)+1;
@@ -1963,7 +1982,7 @@ function runCalc(){
   const contMs=cfg.contDate?new Date(cfg.contDate):new Date(today.getTime()+134*864e5);
   const daysToContainer=Math.max(1,Math.round((contMs-today)/864e5));
 
-  proposals=[];removedRows=new Set();
+  proposals=[];removedRows=new Set();skippedNoLev=[];
 
   // ── SHALIN VECKA: weekly top-up flow (own logic, not container/air) ──
   if(S().modes&&S().modes[0]==='vecka'){
@@ -1977,6 +1996,8 @@ function runCalc(){
 
   for(const p of products){
     if(p.y1===0&&p.m3===0&&p.m1===0)continue;
+    // Tom Lev.art.nr: Shalin är inte huvudleverantör → köps inte här.
+    if(S().skipNoLevArt && !String(p.levArt||'').trim()){skippedNoLev.push(p);continue;}
 
     const trend=getTrend(p,cfg);
     const demandMonthly=getLongDemand(p,trend); // lång bindning → konservativt mått
@@ -2164,6 +2185,8 @@ function runVeckaCalc(cfg,today){
   for(const p of products){
     // Skip totally dead rows with no data AND no stock (nothing to decide)
     if(p.y1===0&&p.m3===0&&p.m1===0&&p.lager===0)continue;
+    // Tom Lev.art.nr: Shalin är inte huvudleverantör → köps inte här.
+    if(S_.skipNoLevArt && !String(p.levArt||'').trim()){skippedNoLev.push(p);continue;}
 
     // 25+/år-produkter behandlas som alla andra i veckoköpet: grinden och
     // bryggan avgör. Räcker det som är på väg köps inget; räcker det inte
@@ -2472,6 +2495,18 @@ function getVeckaWarnings(p){
 
 // These POs are NOT counted as incoming stock → risk of double-ordering.
 function renderPODateWarning(){
+  renderPODateWarningInner();
+  const el=document.getElementById('po-date-warning');
+  if(el) el.innerHTML+=skippedNoLevHtml();
+}
+function skippedNoLevHtml(){
+  if(!S().skipNoLevArt || !skippedNoLev.length) return '';
+  const list=skippedNoLev.slice(0,8).map(p=>`<b>${p.artNr}</b> ${String(p.produkt||'').slice(0,45)}`).join('<br>')
+    +(skippedNoLev.length>8?`<br>+${skippedNoLev.length-8} till`:'');
+  return `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1E3A8A">
+    ℹ️ <b>${skippedNoLev.length} produkt${skippedNoLev.length===1?'':'er'} utan Lev.art.nr köps inte här</b> — Shalin är inte huvudleverantör för dem.<br>${list}</div>`;
+}
+function renderPODateWarningInner(){
   const el=document.getElementById('po-date-warning');
   if(!el)return;
   // EU använder inte datumen — varna i stället för ordrar som legat öppna.
