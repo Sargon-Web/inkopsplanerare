@@ -3,7 +3,7 @@
 Detta dokument beskriver HUR verktyget tänker och VARFÖR. Koden ligger i `index.html`
 (en enda fil). Läs det här innan du ändrar beräkningslogik.
 
-Senast uppdaterad: 2026-09-28
+Senast uppdaterad: 2026-10-04
 
 ---
 
@@ -27,7 +27,7 @@ Säljbart datum = ETA + dagar till hylla. Se avsnittet PO-registret nedan.
 
 | Leverantör | Kanal | Ledtid till hylla | Beräkningsväg |
 |---|---|---|---|
-| Cheng | Båt + flygbrygga | båt 155 d, flyg 52 d | `runCalc` |
+| Cheng | Båt + flygbrygga | båt 155 d, flyg 52 d (Övriga 21 d) | `runCalc` |
 | Shalin Container | Endast båt | 120 d | `runCalc` |
 | Shalin Vecka | Veckoköp (flyg) | 28 d | `runVeckaCalc` |
 | EU | Dagligt köp | 8–10 d | `runEuCalc` |
@@ -57,6 +57,27 @@ Cheng och Shalin Container delar kod. Skillnaderna ligger i konfigurationen.
 - Beställs sällan, oftast bara i samband med container. Flygbryggan ska täcka
   hela glappet fram till att containern landar.
 - Familjer: Genuine / 3Card / Övriga, med egna ny-order-ledtider.
+- **Flygbryggan räknas på senaste takten** (`getDemand`), inte båtens
+  försiktiga takt. Flyget är en kort bindning: det täcker bara veckorna fram
+  till att den nya containern är säljbar. Båtordern räknas fortfarande på
+  `getLongDemand` — två separata simuleringar (`sim` för båt, `simAir` för flyg).
+- **Övriga flyger på egen ledtid** — fältet "Flyg-ledtid övriga Cheng" (`s-fly`,
+  standard 21 d). Genuine och 3Card flyger på 52 d (`s-air`). Bryggan täcker
+  glappet från dagen ett nytt flyg kan landa; brist före den dagen är förlorad
+  och köps inte. (Före 2026-10-04 lästes `s-fly` aldrig och Övriga räknades på
+  52 d.)
+- **Stopp vid Bekräfta och Export** (`chengUndatedBlock`). Familjerna bockas i
+  först i steg 4, alltså efter Beräkna, så kontrollen i `runCalc` ser inga
+  familjer och hoppas över. Därför kontrolleras de ibockade familjerna igen:
+  en order som saknar datum, eller som fått datum efter beräkningen, stoppar
+  tills datumet är ifyllt och förslaget beräknat om. Kontrollen ligger inte på
+  Beräkna för alla familjer — då skulle en odaterad Övriga-order stoppa även
+  en Genuine-beställning.
+- **Delleverans** (`capToOutstanding`). Kodmyran visar beställt antal per order
+  även när en del redan kommit och ligger i lager. Raden "Totalt N enheter i
+  befintliga inköpsorders" (`poOutstanding`) är det som faktiskt återstår.
+  Överskottet dras från den order som blir säljbar tidigast — den som redan
+  kommit. Gäller bara Cheng.
 
 ## Shalin Vecka
 
@@ -124,7 +145,8 @@ Gäller alla leverantörer.
   återställs den med sina datum i stället för att komma in tom.
 - **Nollställ inte registret** mellan körningar — datumen följer med.
 - **Vilka ordrar behöver datum:**
-  - Cheng och Shalin Container: alla. Beräkningen stoppar annars.
+  - Cheng och Shalin Container: alla. Beräkningen stoppar annars. Cheng
+    kontrollerar dessutom de ibockade familjerna vid Bekräfta och Export.
   - Shalin Vecka: containerordrar. En order utan datum räknas som att den
     landar inom ledtiden — rätt för veckoordrar, fel för en container (då
     räknas hela containern som lager redan nu). Listan efter beräkningen
