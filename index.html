@@ -827,16 +827,18 @@ function renderBlueprint(){
     ['Minsta årsförsäljning för båt',bpVal(ch.miny,'15')],
     ['Båt-ledtid',bpVal(ch.sea,'155')+' dagar'],
     ['Flyg-ledtid (Genuine/3Card)',bpVal(ch.air,'52')+' dagar'],
+    ['Flyg-ledtid Övriga',bpVal(ch.fly,'21')+' dagar — används av flyg-bryggan för familjen Övriga.'],
     ['Två horisonter','Produkter MED order på väg (PO) fylls av den skickade containern (container-datumet). Produkter UTAN PO måste beställas nytt → ny-order-ledtiden nedan, och flyg-bryggan sträcks hela vägen dit.'],
     ['Ny-order-ledtid Genuine/3Card',bpVal(ch.newlead,'120')+' dagar'],
     ['Ny-order-ledtid Övriga',bpVal(ch.newleadOth,'120')+' dagar'],
-    ['Flyg-brygga','Läggs bara om lagret tar slut före containern, och gapet är ≥1 mån försäljning och ≥5 st (eller om produkten helt tar slut)'],
+    ['Flyg-brygga','Läggs bara om lagret tar slut före containern, och gapet är ≥1 mån försäljning och ≥5 st (eller om produkten helt tar slut). Räknas på SENASTE takten (kort bindning) — inte båtens försiktiga takt. Täcker glappet från dagen ett nytt flyg kan landa (Genuine/3Card 52 d, Övriga egen flyg-ledtid) tills den nya containern är säljbar.'],
     ['Horisont','Ny-order-ledtiden — dagen DENNA order blir säljbar. Leveranstider hämtas per order ur PO-registret.'],
-    ['Efterfrågemått','Samma konservativa långtidsmått som Shalin Container (se nedan).'],
+    ['Efterfrågemått','Båt: samma konservativa långtidsmått som Shalin Container (se nedan). Flyg-brygga: senaste takten — vid trend upp det högsta av viktat snitt, 1-månaderstakt och 3-månaderstakt.'],
     ['Order efter horisont',bpVal(ch.postcont,'0')+' dagar — rekommenderat 0.'],
     ['Utfasning','Artikel < utfasningsgräns OCH sålt < 10/år → köps ej, Slutförsäljning: Ja'],
     ['Lager som räknas','Til (säljbart). Ila räknas EJ.'],
-    ['PO-register','Alla ordrar behöver datum — beräkningen stoppar annars. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
+    ['PO-register','Alla ordrar behöver datum — beräkningen stoppar annars. Familjerna bockas i först i steg 4, så kontrollen görs igen vid Bekräfta och Export: saknar en order i en ibockad familj datum, eller har den fått datum efter beräkningen, kommer man inte vidare förrän datumet är ifyllt och förslaget beräknat om. Registret behålls mellan körningar — nollställ det inte. Nya ordrar hämtas och inlevererade tas bort automatiskt när du går till steg 2, bara för leverantören du kör.'],
+    ['Delleverans','Kodmyran visar beställt antal per order även när en del redan kommit. Raden "Totalt N enheter i befintliga inköpsorders" är det som faktiskt återstår — överskottet dras från den order som landat tidigast, så redan levererade enheter räknas inte dubbelt.'],
   ];
 
   // ── Shalin Container ──
@@ -1281,6 +1283,15 @@ function parseProducts(rows){
     const aRaw=String(r[iA]||'').trim(),pRaw=String(r[iP]||'').trim();
     // PO row comes AFTER product row
     if(!aRaw&&pRaw.toLowerCase().includes('inköpsorder')){
+      // "Totalt N enheter i befintliga inköpsorders" = det som FAKTISKT
+      // återstår att leverera. Raderna "Inköpsorder #X, N antal beställda"
+      // visar det beställda antalet även efter en delleverans. Sparas och
+      // används av Cheng-beräkningen (capToOutstanding).
+      const tot=pRaw.match(/^\s*totalt\s+(\d+)\s+enheter/i);
+      if(tot){
+        if(out.length>0) out[out.length-1].poOutstanding=parseInt(tot[1]);
+        continue;
+      }
       const m=pRaw.match(/#(\w+)[\s\S]*?(\d+)\s*antal/i);
       if(m&&out.length>0){
         out[out.length-1].filePOs.push({po:m[1],qty:parseInt(m[2])});
@@ -1374,6 +1385,7 @@ function loadFile(file,mode){
         if(existing.has(p3.artNr)){
           // Merge PO info into existing product
           const p12=existing.get(p3.artNr);
+          let poChanged=false;
           for(const po3 of p3.filePOs){
             const already=p12.filePOs.some(po=>normPN(po.po)===normPN(po3.po)&&po.qty===po3.qty);
             if(!already){
@@ -1381,7 +1393,16 @@ function loadFile(file,mode){
               p12.filePOs=p12.filePOs.filter(po=>normPN(po.po)!==normPN(po3.po));
               p12.filePOs.push(po3);
               addedPOs++;
+              poChanged=true;
             }
+          }
+          // "Totalt"-raden hör till EN fils PO-lista. Ändrades listan av
+          // tilläggsfilen gäller basfilens Totalt inte längre — använd
+          // tilläggsfilens bara om listorna nu är identiska, annars ingen.
+          if(poChanged){
+            const key=l=>l.map(po=>normPN(po.po)+':'+po.qty).sort().join('|');
+            if(p3.poOutstanding!=null && key(p12.filePOs)===key(p3.filePOs)) p12.poOutstanding=p3.poOutstanding;
+            else delete p12.poOutstanding;
           }
           // Update lager/ila if 3m has fresher data (more recent export)
           // Keep 12m sales data (y1,m3,m1) but update stock if 3m is newer
@@ -1589,6 +1610,27 @@ function getPODeliveries(filePOs){
     }
   });
   return deliveries.sort((a,b)=>a.day-b.day);
+}
+
+// Delleverans (endast Cheng): Kodmyran visar "Inköpsorder #X, N antal
+// beställda" med det BESTÄLLDA antalet även när en del redan har kommit och
+// ligger i lager. Då räknades de enheterna dubbelt — som lager OCH som på väg
+// — och verktyget beställde för lite. Raden "Totalt N enheter i befintliga
+// inköpsorders" (p.poOutstanding) är det som faktiskt återstår. Överskottet
+// dras från den order som blir säljbar tidigast: det är den som redan har
+// kommit (delvis). Exempel 246012: 3158 (90) + 3159 (30), Totalt 95 →
+// 3159 räknas som 5.
+function capToOutstanding(deliveries, outstanding){
+  if(outstanding==null || !isFinite(outstanding)) return deliveries;
+  let excess = deliveries.reduce((s,d)=>s+d.qty,0) - outstanding;
+  if(excess<=0) return deliveries;
+  const out = deliveries.map(d=>Object.assign({},d)); // redan sorterade på dag
+  for(const d of out){
+    if(excess<=0) break;
+    const cut=Math.min(d.qty,excess);
+    d.qty-=cut; excess-=cut;
+  }
+  return out.filter(d=>d.qty>0);
 }
 
 function hasActivePO(filePOs){
@@ -1950,6 +1992,64 @@ function getUndatedLinkedPOs(){
   return bad.sort((a,b)=>b.qty-a.qty);
 }
 
+// ── Stopp före Bekräfta/Export (endast Cheng) ───────────────────────
+// Kontrollen i runCalc gäller bara ibockade familjer, men för Cheng sitter
+// familjerutorna i steg 4 — alltså EFTER beräkningen. När man trycker
+// Beräkna är inget ibockat och kontrollen hoppas över; i steg 4 visades
+// bara en röd ruta som gick att klicka förbi. Så blev ett utkast ~4 500 st
+// för stort när PO-registret var tomt (3158 räknades inte av).
+// Kontrollen kan inte flyttas till Beräkna för alla familjer: då skulle en
+// odaterad Övriga-order (t.ex. 2396) stoppa även en Genuine-beställning.
+// I stället: vid Bekräfta och Export kontrolleras de familjer som ÄR
+// ibockade —
+//   1) order som saknar datum nu        → fyll i steg 2 och beräkna om
+//   2) order som saknade datum när förslaget räknades men har fått datum
+//      sedan                            → förslaget är inaktuellt, beräkna om
+let calcUndatedByFam=null; // {familj:{po:antal}} vid senaste beräkningen
+
+function undatedPOsByFamily(){
+  const out={};
+  (products||[]).forEach(p=>{
+    if(isForeignProduct(p))return;     // annan huvudleverantör — köps inte här
+    const f=getFamily(p)||'all';
+    (p.filePOs||[]).forEach(fp=>{
+      const n=normPN(fp.po);
+      const po=poList.find(pl=>normPN(pl.po)===n);
+      if(po&&po.eta&&isValidDate(po.eta))return; // har datum → krediteras
+      if(!out[f])out[f]={};
+      out[f][n]=(out[f][n]||0)+(fp.qty||0);
+    });
+  });
+  return out;
+}
+
+function chengUndatedBlock(){
+  if(activeSup!=='cheng')return false;
+  const sel=selectedFamilies(true);
+  const fams=sel?Object.keys(sel).filter(f=>sel[f]):['all'];
+  const now=undatedPOsByFamily();
+  const atCalc=calcUndatedByFam||{};
+  const missing={}, stale={};
+  fams.forEach(f=>{
+    const nowF=now[f]||{};
+    Object.keys(nowF).forEach(po=>{missing[po]=(missing[po]||0)+nowF[po];});
+    const calcF=atCalc[f]||{};
+    Object.keys(calcF).forEach(po=>{ if(!nowF[po]) stale[po]=(stale[po]||0)+calcF[po]; });
+  });
+  const fmt=o=>Object.keys(o).sort((a,b)=>o[b]-o[a]).map(po=>`  #${po} — ${o[po]} st`).join('\n');
+  if(Object.keys(missing).length){
+    alert('Förslaget kan inte bekräftas eller exporteras än.\n\nDe här inköpsordrarna saknar datum och räknas därför INTE av:\n\n'+fmt(missing)+'\n\nGör så här:\n1. Fyll i ETA och dagar till hylla i steg 2.\n2. Gå till steg 3 och tryck Beräkna igen.\n\nAnnars dubbelbeställs produkterna.');
+    goTo(1);
+    return true;
+  }
+  if(Object.keys(stale).length){
+    alert('Förslaget är inte uppdaterat.\n\nDe här inköpsordrarna har fått datum EFTER att förslaget räknades:\n\n'+fmt(stale)+'\n\nGå till steg 3 och tryck Beräkna igen, så räknas de av.');
+    goTo(2);
+    return true;
+  }
+  return false;
+}
+
 function runCalc(){
   // Utfasningsgräns 0 = ingen utfasning alls → gamla svaga produkter får order.
   // Tillåtet, men aldrig tyst: kräver ett aktivt ja.
@@ -1970,6 +2070,9 @@ function runCalc(){
       return;
     }
   }
+  // Cheng: kom ihåg vilka order som saknade datum när förslaget räknades.
+  // Kontrolleras igen vid Bekräfta/Export (se chengUndatedBlock).
+  calcUndatedByFam = activeSup==='cheng' ? undatedPOsByFamily() : null;
   const cfg={
     contDate:gv('s-cont'),
     seaLead:parseInt(gv('s-sea'))||134,
@@ -2033,7 +2136,11 @@ function runCalc(){
     }
 
     // Get PO deliveries timeline
-    const deliveries=getPODeliveries(p.filePOs);
+    // Cheng: delleverans räknas inte dubbelt (se capToOutstanding).
+    const isCheng = activeSup==='cheng';
+    const deliveries = isCheng
+      ? capToOutstanding(getPODeliveries(p.filePOs), p.poOutstanding)
+      : getPODeliveries(p.filePOs);
     const poBatTotal=deliveries.reduce((s,d)=>s+d.qty,0);
 
     // ── EN horisont: den dag ordern vi lägger IDAG blir säljbar ────────
@@ -2060,6 +2167,24 @@ function runCalc(){
     // airLead passed so air bridge ignores gaps that close before a new flight could land
     const postContWin=parseInt(gv('s-postcont'));
     const sim=simulateStock(p.lager, S().countIla?p.ila:0, deliveries, daily, horizonDays, cfg.airLead, isNaN(postContWin)?0:postContWin);
+
+    // ── Flygbryggan (endast Cheng) ───────────────────────────────────
+    // Flyget är en KORT bindning: det täcker bara veckorna fram till att
+    // den nya containern blir säljbar. Därför räknas det på den senaste
+    // takten (getDemand), precis som REGLER.md säger om korta bindningar.
+    // Båtens försiktiga takt (getLongDemand) gav för lite flyg på produkter
+    // som just nu säljer bättre än årssnittet.
+    // Övriga Cheng flyger på egen ledtid: fältet s-fly ("Flyg-ledtid övriga
+    // Cheng", standard 21 d). Tidigare lästes fältet aldrig och Övriga
+    // räknades som om flyget tog 52 dagar — hål som uppstod före dag 52
+    // räknades då som förlorade och köptes inte.
+    // Båtordern påverkas INTE: den räknas fortfarande på `sim` ovan.
+    // Övriga leverantörer (Shalin Container) går på `sim` precis som förut.
+    const airMonthly = isCheng ? getDemand(p,trend) : demandMonthly;
+    const airLeadFam = (isCheng && fam==='other') ? (parseInt(gv('s-fly'))||cfg.airLead) : cfg.airLead;
+    const simAir = isCheng
+      ? simulateStock(p.lager, S().countIla?p.ila:0, deliveries, airMonthly/30, horizonDays, airLeadFam, isNaN(postContWin)?0:postContWin)
+      : sim;
 
     // Days left (stock only, without PO)
     const daysLeft=calcDaysLeftStock(p.lager,daily);
@@ -2095,16 +2220,16 @@ function runCalc(){
       // a real stockout on a real seller always warrants a flight.
       const airMinMonths=S().airBridgeMinMonths!=null?S().airBridgeMinMonths:1;
       const airUnitFloor=S().airBridgeMinUnits!=null?S().airBridgeMinUnits:3;
-      const airThreshold=demandMonthly*airMinMonths;
-      const runsDry=sim.stockoutDay!=null&&sim.stockoutDay>=0; // hits zero before container
-      const passesGates=sim.airGap>=airThreshold && sim.airGap>=airUnitFloor;
+      const airThreshold=airMonthly*airMinMonths;
+      const runsDry=simAir.stockoutDay!=null&&simAir.stockoutDay>=0; // hits zero before container
+      const passesGates=simAir.airGap>=airThreshold && simAir.airGap>=airUnitFloor;
       // useAirBridge=false: leverantören har en snabbare egen kanal (Shalin
       // Vecka, ~28 dgr till hylla mot flygets 52) till samma fraktkostnad.
       // Flygbryggan är då strikt sämre: långsammare, lika dyr, och kan inte
       // stoppas om containern kommer tidigt. Glappet täcks av veckoköpet.
       // Cheng saknar veckokanal och behåller bryggan.
-      if(S().useAirBridge!==false && sim.airGap>0 && (passesGates || runsDry)){
-        airQ=rnd5(Math.round(sim.airGap));
+      if(S().useAirBridge!==false && simAir.airGap>0 && (passesGates || runsDry)){
+        airQ=rnd5(Math.round(simAir.airGap));
       }
 
       // BAT ORDER
@@ -2543,7 +2668,7 @@ function renderPODateWarningInner(){
       </div>
       <div style="font-size:12px;color:#7F1D1D;margin-bottom:8px">
         Dessa PO:er saknar säljbart datum och krediteras därför inte i förslaget —
-        produkter kopplade till dem kan få <b>dubbelbeställning</b>. Lägg till ETA i steg 2 och beräkna om.
+        produkter kopplade till dem kan få <b>dubbelbeställning</b>. Lägg till ETA i steg 2 och beräkna om.${activeSup==='cheng'?' <b>Du kommer inte vidare till Bekräfta eller Export förrän det är gjort.</b>':''}
       </div>
       <ul style="margin:0 0 10px 18px;padding:0;font-size:12px;color:#7F1D1D">${rows}</ul>
       <button class="btn btn-sm" style="background:#B91C1C;color:#fff" onclick="goTo(1)">← Till PO-registret (steg 2)</button>
@@ -2615,6 +2740,8 @@ function goToConfirmWithCheck(){
     if(filterBar){filterBar.style.border='2px solid #FAC775';setTimeout(()=>filterBar.style.border='',3000);}
     return;
   }
+  // Cheng: odaterade inköpsorder i ibockade familjer stoppar här
+  if(chengUndatedBlock())return;
   // Show what will be exported
   const filtered=getFilteredRows();
   const famNames=[];
@@ -2971,6 +3098,8 @@ function doExport(type){
   const isVecka=isWeekly();
   const act=getFilteredRows();
   if(act.length===0){alert('Inga rader att exportera. Gå tillbaka och beräkna ett orderförslag.');return;}
+  // Cheng: odaterade inköpsorder i ibockade familjer stoppar exporten
+  if(chengUndatedBlock())return;
   // Save this run for future comparison
   saveLastRun(act);
   const supSlug=activeSup.replace(/_/g,'-');
