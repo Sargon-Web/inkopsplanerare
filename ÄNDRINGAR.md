@@ -7,6 +7,84 @@ som ändrades, och jämför med facit.
 
 ---
 
+## 2026-10-04 — Cheng: flygbryggan, Övrigas flygtid, datumstopp, delleverans
+
+**Ändrar beräkningen:** bara Cheng, och bara flyget. Båtordern är oförändrad
+på varje rad.
+**Ändrar inte:** Shalin Container, Shalin Vecka och EU.
+
+### Ändringar
+
+1. **Flygbryggan räknas på senaste takten.** Förut räknade flyget med samma
+   försiktiga takt som båten. Flyget täcker bara veckorna fram till containern
+   och ska följa hur produkten säljer nu, vilket REGLER.md redan sa.
+   Exempel: 240932 sålde 20 st förra månaden. Den försiktiga takten var
+   ca 11 st/mån. Flyget går från 25 till 50 st, och båten ligger kvar på 80 st.
+2. **Övriga Cheng flyger på sin egen ledtid.** Fältet "Flyg-ledtid övriga Cheng"
+   (21 d) lästes aldrig förut, så Övriga räknades som om flyget tog 52 dagar.
+   Hål före dag 52 räknades då som förlorade och köptes inte.
+   Exempel: 228518 Ryggsträckare går från 15 till 30 st i flyg.
+3. **Stopp vid Bekräfta och Export.** Om en order saknar datum i en ibockad
+   familj, eller har fått datum efter beräkningen, kommer man inte vidare.
+   Förut gick det att klicka förbi den röda rutan. Familjerna bockas ju i
+   först efter Beräkna, så kontrollen där hoppades över för Cheng. Ett utkast
+   blev ca 4 500 st för stort på det sättet (3158 räknades inte av).
+   En odaterad Övriga-order (2396) stoppar bara när Övriga är ibockad.
+4. **Delleverans räknas inte dubbelt.** Verktyget läser nu även raden
+   "Totalt N enheter i befintliga inköpsorders". Är de beställda antalen fler
+   än så dras skillnaden från den order som redan har kommit.
+5. **Texter:** Regelverket (Cheng) och den röda PO-rutan.
+
+Alla fyra ändringarna är kontrollerade var för sig. Bara 1 och 2 flyttar
+siffror. Vilken av dem som ändrade en viss rad står i kolumnen "Varför" i
+`cheng-nya-flygregler.xlsx`.
+
+### Facit
+
+Indata: filen `Cheng-alltfranlev-3e-okt-efterinlev.xlsx` (bara den), körd
+3 okt kväll eller 4 okt. Inställningar: utfasningsgräns 240000, ny-order-ledtid
+120/120, flyg 52, Övriga flyg 21, tröskel 15. PO-register: 3125 ETA 5 okt,
+3148 12 okt, 3166 31 okt, 3158/3165/3214 10 dec, alla med 14 dagar till hylla.
+2396 saknar datum.
+
+| Familj | Gammal kod (rader / båt / flyg) | Ny kod (rader / båt / flyg) |
+|---|---|---|
+| Genuine | 155 / 4 520 / 660 | 157 / 4 520 / 825 |
+| 3 Card | 84 / 2 250 / 270 | 84 / 2 250 / 350 |
+| Övriga | 43 / 1 760 / 250 | 44 / 1 760 / 440 |
+
+- **45 rader ändras, och bara flyget ökar.** Orsaken är senaste takten på 32
+  rader, Övrigas flygtid på 11 och båda på 2. Nya rader: 7359, 19866 (Genuine)
+  och 225320 (Övriga).
+- Körs samma filer tidigare på dagen 3 okt kan enstaka rader flytta 5 st på
+  grund av dagavrundningen.
+- **Ändring 3:** med Övriga ibockad stoppar Bekräfta på 2396. Med Genuine
+  eller 3 Card går det igenom.
+- **Ändring 4:** morgonfilen 3 okt (mindre1ars) hade 246012 med 3158 (90) +
+  3159 (30) och Totalt 95. 3159 räknas nu som 5 st i stället för 30.
+  I efterinlev-filen slår regeln inte till någonstans.
+- **Shalin Vecka och EU:** identiskt utfall rad för rad (Shalin-filen 24 aug:
+  625 respektive 674 rader). Shalin Containers kodväg: identisk.
+
+### Håll koll på
+
+- **"Flyg-ledtid övriga Cheng" används nu.** Fältet ska vara den verkliga
+  tiden till hylla för ett Övriga-flyg. Ett för lågt värde ger för mycket flyg
+  på Övriga, ett för högt ger för lite.
+- **En tillfälligt het månad ger nu mer flyg**, men inte mer båt. Titta extra
+  på rader med varningen "Topptakt".
+- **Stopprutan vid Bekräfta:** fyll i datumet i steg 2, gå till steg 3 och
+  tryck Beräkna igen.
+- **Övriga kan inte bekräftas förrän 2396 har fått ett datum.**
+
+### Gå tillbaka till förra versionen
+
+- **Vercel:** Deployments → välj förra deployen → gör den till produktion
+  igen (rollback).
+- **GitHub:** index.html → History → öppna förra versionen och kopiera den.
+
+---
+
 ## 2026-09-28 — Shalin: produkter utan Lev.art.nr köps inte
 
 **Ändrar beräkningen:** Shalin Vecka och Shalin Container.
